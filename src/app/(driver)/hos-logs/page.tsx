@@ -1,21 +1,25 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Clock, CheckCircle, MapPin, Calendar, Power, BedDouble, Truck, Briefcase } from 'lucide-react';
+import { Clock, CheckCircle, MapPin, Calendar, Power, BedDouble, Truck, Briefcase, Download } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const STATUS_COLORS: Record<string, string> = {
   'OFF_DUTY': 'bg-gray-500',
   'SLEEPER': 'bg-blue-500',
   'DRIVING': 'bg-success',
-  'ON_DUTY': 'bg-warning'
+  'ON_DUTY': 'bg-warning',
+  'Pre-Trip DVIR': 'bg-purple-500'
 };
 
 const STATUS_ICONS: Record<string, React.ReactNode> = {
   'OFF_DUTY': <Power className="w-5 h-5" />,
   'SLEEPER': <BedDouble className="w-5 h-5" />,
   'DRIVING': <Truck className="w-5 h-5" />,
-  'ON_DUTY': <Briefcase className="w-5 h-5" />
+  'ON_DUTY': <Briefcase className="w-5 h-5" />,
+  'Pre-Trip DVIR': <CheckCircle className="w-5 h-5" />
 };
 
 export default function HosLogs() {
@@ -59,21 +63,53 @@ export default function HosLogs() {
     const endOfDay = new Date();
     endOfDay.setHours(23, 59, 59, 999);
 
-    const { data, error } = await supabase
+    const { data: hosData, error: hosError } = await supabase
       .from('hos_logs')
       .select('*')
       .eq('driver_id', driverId)
       .gte('start_time', startOfDay.toISOString())
-      .lte('start_time', endOfDay.toISOString())
-      .order('start_time', { ascending: true });
+      .lte('start_time', endOfDay.toISOString());
 
-    if (!error && data) {
-      setLogs(data);
-      if (data.length > 0) {
-        // Last log is the current status
-        setCurrentStatus(data[data.length - 1].status);
-        calculateClocks(data);
-      }
+    // Fetch the absolute latest log to get current status reliably (even if from yesterday)
+    const { data: latestLog } = await supabase
+      .from('hos_logs')
+      .select('status')
+      .eq('driver_id', driverId)
+      .order('start_time', { ascending: false })
+      .limit(1);
+      
+    if (latestLog && latestLog.length > 0) {
+      setCurrentStatus(latestLog[0].status);
+    }
+
+    const { data: inspData, error: inspError } = await supabase
+      .from('inspections')
+      .select('*')
+      .eq('driver_id', driverId)
+      .gte('created_at', startOfDay.toISOString())
+      .lte('created_at', endOfDay.toISOString());
+
+    let combined: any[] = [];
+    if (hosData) {
+      combined = combined.concat(hosData.map(d => ({...d, _type: 'hos'})));
+    }
+    if (inspData) {
+      combined = combined.concat(inspData.map(d => ({
+        ...d,
+        _type: 'inspection',
+        start_time: d.created_at,
+        end_time: d.created_at,
+        status: 'Pre-Trip DVIR',
+        location_lat: null,
+        location_lng: null
+      })));
+    }
+
+    combined.sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+
+    setLogs(combined);
+    if (combined.length > 0) {
+      calculateClocks(combined);
     }
     setLoading(false);
   }
@@ -129,8 +165,8 @@ export default function HosLogs() {
 
     // 1. Close current active log if exists
     if (logs.length > 0) {
-      const activeLog = logs[logs.length - 1];
-      if (!activeLog.end_time) {
+      const activeLog = logs.slice().reverse().find(l => l._type === 'hos');
+      if (activeLog && !activeLog.end_time) {
         await supabase.from('hos_logs').update({ end_time: now }).eq('id', activeLog.id);
       }
     }
@@ -156,23 +192,68 @@ export default function HosLogs() {
   function formatDuration(start: string, end: string | null) {
     const s = new Date(start).getTime();
     const e = end ? new Date(end).getTime() : new Date().getTime();
+    if (end === start) return 'Completed';
     const diff = e - s;
     const h = Math.floor(diff / (1000 * 60 * 60));
     const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
     return end ? `${h}h ${m}m` : 'Active';
   }
 
+  async function handleExportPDF() {
+     try {
+       const doc = new jsPDF();
+       const driverName = typeof window !== 'undefined' ? localStorage.getItem('fleet_user_name') || 'Driver' : 'Driver';
+       
+       // Header
+       doc.setFontSize(18);
+       doc.text("DRIVER'S DAILY LOG", 105, 15, { align: 'center' });
+       doc.setFontSize(10);
+       doc.text("Carrier: Northstar Freight Logistics", 14, 25);
+       doc.text(`Driver: ${driverName}`, 14, 30);
+       doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, 35);
+       
+       // Table
+       const tableData = logs.map(log => [
+         new Date(log.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+         (log.end_time && log.end_time !== log.start_time) ? new Date(log.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (log._type === 'inspection' ? '-' : 'Active'),
+         log.status.replace('_', ' '),
+         log.location_lat ? `${log.location_lat.toFixed(2)}, ${log.location_lng.toFixed(2)}` : 'Manual',
+         formatDuration(log.start_time, log.end_time)
+       ]);
+
+       autoTable(doc, {
+         startY: 45,
+         head: [['Start', 'End', 'Duty Status', 'Location', 'Duration']],
+         body: tableData,
+         theme: 'grid',
+         headStyles: { fillColor: [22, 160, 133] }
+       });
+
+       const pdfUrl = doc.output('bloburl');
+       window.open(pdfUrl, '_blank');
+       
+     } catch (err) {
+       console.error(err);
+       alert("Error generating PDF.");
+     }
+  }
+
 
   return (
     <div className="flex flex-col min-h-screen bg-[#000] text-white">
       {/* Header */}
-      <header className="bg-[#111] p-6 pb-8 rounded-b-[40px] shadow-2xl relative z-10 border-b border-white/5">
+      <header className="bg-[#111] p-6 pt-20 pb-8 rounded-b-[40px] shadow-2xl relative z-10 border-b border-white/5">
         <div className="flex justify-between items-center mb-6">
            <h1 className="text-2xl font-black text-white flex items-center">
               <Clock className="w-6 h-6 mr-3 text-primary" /> Logbook
            </h1>
-           <div className="flex items-center text-xs font-bold text-gray-400 bg-white/5 px-3 py-1.5 rounded-full">
-              <Calendar className="w-4 h-4 mr-2" /> {currentDate}
+           <div className="flex items-center gap-2">
+             <button onClick={handleExportPDF} className="bg-primary/20 text-primary border border-primary/30 p-2 rounded-full hover:bg-primary/30 transition">
+                <Download className="w-5 h-5" />
+             </button>
+             <div className="flex items-center text-xs font-bold text-gray-400 bg-white/5 px-3 py-1.5 rounded-full">
+                <Calendar className="w-4 h-4 mr-2" /> {currentDate}
+             </div>
            </div>
         </div>
         

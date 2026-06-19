@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import { MapPin, Truck, CheckCircle, Package, LogOut, Upload, FileText, Camera, Navigation, Clock, X, Map, ShieldCheck, Wrench } from 'lucide-react';
+import { MapPin, Truck, CheckCircle, Package, LogOut, Upload, FileText, Camera, Navigation, Clock, X, Map, ShieldCheck, Wrench, Wallet, ChevronRight } from 'lucide-react';
 
 const HOS_STATUSES = [
   { id: 'off_duty', label: 'Off Duty', color: 'bg-gray-500' },
@@ -81,14 +81,21 @@ export default function DriverApp() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // HOS States
-  const [dutyStatus, setDutyStatus] = useState(HOS_STATUSES[3]); // Default: On Duty
+  const [dutyStatus, setDutyStatus] = useState(HOS_STATUSES[0]); // Default: Off Duty
   const [showHosModal, setShowHosModal] = useState(false);
   const [hosAnnotation, setHosAnnotation] = useState('');
-  const [tempDutyStatus, setTempDutyStatus] = useState(HOS_STATUSES[3]);
+  const [tempDutyStatus, setTempDutyStatus] = useState(HOS_STATUSES[0]);
 
   // GPS Navigation States
   const [showGpsModal, setShowGpsModal] = useState(false);
   const [navAddress, setNavAddress] = useState('');
+
+  // Security States
+  const [showSecurityModal, setShowSecurityModal] = useState(false);
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+
+  const [weeklyEarnings, setWeeklyEarnings] = useState(0);
 
   useEffect(() => {
     // Read from localStorage (simulate login state)
@@ -104,7 +111,38 @@ export default function DriverApp() {
     setDriverId(storedId);
     setDriverName(storedName || 'Driver');
     fetchActiveLoad(storedId);
+    fetchLatestLog(storedId);
+    fetchWeeklyEarnings(storedId);
   }, [router]);
+
+  async function fetchWeeklyEarnings(dId: string) {
+    const { data, error } = await supabase
+       .from('load_financials')
+       .select('*, loads!inner(assigned_driver_id)')
+       .eq('status', 'reconciled')
+       .eq('loads.assigned_driver_id', dId);
+       
+    if (!error && data) {
+       const totalPay = data.reduce((acc, row) => acc + Number(row.driver_pay || 0), 0);
+       setWeeklyEarnings(totalPay);
+    }
+  }
+
+  async function fetchLatestLog(dId: string) {
+    const { data } = await supabase
+      .from('hos_logs')
+      .select('*')
+      .eq('driver_id', dId)
+      .order('start_time', { ascending: false })
+      .limit(1);
+
+    if (data && data.length > 0) {
+      const dbStatus = data[0].status;
+      const mappedId = dbStatus.toLowerCase();
+      const match = HOS_STATUSES.find(s => s.id === mappedId || s.id === dbStatus);
+      if (match) setDutyStatus(match);
+    }
+  }
 
   async function fetchActiveLoad(dId: string) {
     setLoading(true);
@@ -129,6 +167,26 @@ export default function DriverApp() {
     localStorage.removeItem('fleet_user_role');
     localStorage.removeItem('fleet_user_name');
     router.push('/login');
+  };
+
+  const handleUpdatePin = async () => {
+    if (newPin.length !== 4) {
+      alert("PIN must be 4 digits.");
+      return;
+    }
+    if (newPin !== confirmPin) {
+      alert("PINs do not match.");
+      return;
+    }
+    const { error } = await supabase.from('users').update({ security_pin: newPin }).eq('id', driverId);
+    if (!error) {
+      alert("PIN updated successfully!");
+      setShowSecurityModal(false);
+      setNewPin('');
+      setConfirmPin('');
+    } else {
+      alert("Error updating PIN: " + error.message);
+    }
   };
 
   const handleStatusUpdate = async (loadId: string, newStatus: string) => {
@@ -239,15 +297,44 @@ export default function DriverApp() {
       case 'google': return `https://www.google.com/maps/dir/?api=1&destination=${encoded}`;
       case 'waze': return `https://waze.com/ul?q=${encoded}&navigate=yes`;
       case 'apple': return `http://maps.apple.com/?daddr=${encoded}`;
+      case 'sygic': return `com.sygic.aura://search|${encoded}|drive`;
+      case 'hammer': return `https://hammerapp.com/app/route/current-location/${encoded}`;
+      case 'truckerpath': return `truckerpath://`; // TruckerPath requires lat/lng, falling back to app launch
       default: return '#';
     }
   };
 
-  const handleUpdateHos = () => {
+  const handleUpdateHos = async () => {
     setDutyStatus(tempDutyStatus);
     setShowHosModal(false);
+    
+    // Save to the 'hos_logs' table in Supabase so it syncs with the Logs page
+    const now = new Date().toISOString();
+    
+    // Attempt to close previous active log if needed
+    const { data: activeLogs } = await supabase
+      .from('hos_logs')
+      .select('id')
+      .eq('driver_id', driverId)
+      .is('end_time', null)
+      .order('start_time', { ascending: false })
+      .limit(1);
+
+    if (activeLogs && activeLogs.length > 0) {
+      await supabase.from('hos_logs').update({ end_time: now }).eq('id', activeLogs[0].id);
+    }
+
+    // Insert new log
+    const dbStatus = tempDutyStatus.id.toUpperCase(); // Ensure it matches hos-logs (e.g. 'ON_DUTY')
+    await supabase.from('hos_logs').insert([{
+      driver_id: driverId,
+      status: dbStatus,
+      start_time: now,
+      location_lat: null, // Driver-app doesn't pull GPS for this quick update yet
+      location_lng: null
+    }]);
+
     setHosAnnotation('');
-    // In a real app, this would save to the 'hos_logs' table in Supabase
   };
 
   if (loading) {
@@ -257,7 +344,7 @@ export default function DriverApp() {
   return (
     <div className="flex flex-col h-full bg-[#0a0a0a] relative">
       {/* Driver Header */}
-      <header className="bg-[#111] p-6 pb-8 rounded-b-[40px] shadow-lg relative z-10">
+      <header className="bg-[#111] p-6 pt-16 pb-8 rounded-b-[40px] shadow-lg relative z-10">
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center space-x-3">
              <div className="w-12 h-12 rounded-full bg-primary/20 text-primary flex items-center justify-center border border-primary/30">
@@ -268,17 +355,23 @@ export default function DriverApp() {
                 <h1 className="text-xl font-black text-white">{driverName}</h1>
              </div>
           </div>
-          <button onClick={handleLogout} className="p-2 bg-white/5 hover:bg-white/10 rounded-full transition">
-            <LogOut className="w-5 h-5 text-gray-400" />
-          </button>
+          <div className="flex space-x-2">
+            <button onClick={() => setShowSecurityModal(true)} className="p-2 bg-white/5 hover:bg-white/10 rounded-full transition" title="Security Settings">
+              <ShieldCheck className="w-5 h-5 text-gray-400" />
+            </button>
+            <button onClick={handleLogout} className="p-2 bg-white/5 hover:bg-white/10 rounded-full transition" title="Logout">
+              <LogOut className="w-5 h-5 text-gray-400" />
+            </button>
+          </div>
         </div>
 
+        {/* Duty Status (Full Width) */}
         <button 
            onClick={() => {
               setTempDutyStatus(dutyStatus);
               setShowHosModal(true);
            }}
-           className="w-full bg-black/50 hover:bg-black border border-white/5 p-4 rounded-2xl flex items-center justify-between transition cursor-pointer"
+           className="w-full bg-black/50 hover:bg-black border border-white/5 p-4 rounded-2xl flex items-center justify-between transition cursor-pointer mb-3"
         >
            <div>
               <p className="text-xs text-gray-500 mb-1 flex items-center"><Clock className="w-3 h-3 mr-1" /> Duty Status</p>
@@ -288,48 +381,45 @@ export default function DriverApp() {
               </div>
            </div>
            <div className="text-right">
-              <p className="text-xs text-gray-500 mb-1">Active Dispatches</p>
+              <p className="text-xs text-gray-500 mb-1">Active Loads</p>
               <span className="font-bold text-white text-sm">{activeLoads.length > 0 ? activeLoads.length : 'None'}</span>
            </div>
         </button>
 
+        {/* 3 Compact Widgets in a row */}
+        <div className="flex bg-[#1a1a1a] border border-white/5 rounded-2xl overflow-hidden divide-x divide-white/5">
+          {/* Roadside Inspection Button */}
+          <button 
+            onClick={() => router.push('/documents')}
+            className="flex-1 hover:bg-white/5 p-3 flex flex-col items-center justify-center transition cursor-pointer text-center h-16"
+          >
+            <ShieldCheck className="w-5 h-5 text-danger mb-1" />
+            <h3 className="font-bold text-white text-[9px] uppercase tracking-wider leading-tight">Inspection</h3>
+          </button>
 
+          {/* Report Repair Button */}
+          <button 
+            onClick={() => router.push('/repairs')}
+            className="flex-1 hover:bg-white/5 p-3 flex flex-col items-center justify-center transition cursor-pointer text-center h-16"
+          >
+            <Wrench className="w-5 h-5 text-warning mb-1" />
+            <h3 className="font-bold text-white text-[9px] uppercase tracking-wider leading-tight">Shop/Repair</h3>
+          </button>
 
-        {/* Roadside Inspection Button */}
-        <button 
-          onClick={() => router.push('/documents')}
-          className="w-full mt-3 bg-danger/10 hover:bg-danger/20 border border-danger/30 p-4 rounded-2xl flex items-center justify-between transition cursor-pointer"
-        >
-          <div className="flex items-center">
-            <div className="w-10 h-10 bg-danger/20 rounded-full flex items-center justify-center mr-3">
-               <ShieldCheck className="w-5 h-5 text-danger" />
-            </div>
-            <div className="text-left">
-              <h3 className="font-bold text-white">Roadside Inspection</h3>
-              <p className="text-xs text-danger/70">Digital Glovebox (Officer Mode)</p>
-            </div>
-          </div>
-        </button>
-
-        {/* Report Repair Button */}
-        <button 
-          onClick={() => router.push('/repairs')}
-          className="w-full mt-3 bg-warning/10 hover:bg-warning/20 border border-warning/30 p-4 rounded-2xl flex items-center justify-between transition cursor-pointer"
-        >
-          <div className="flex items-center">
-            <div className="w-10 h-10 bg-warning/20 rounded-full flex items-center justify-center mr-3">
-               <Wrench className="w-5 h-5 text-warning" />
-            </div>
-            <div className="text-left">
-              <h3 className="font-bold text-white">Log Shop Visit / Repair</h3>
-              <p className="text-xs text-warning/70">Upload invoice & parts details</p>
-            </div>
-          </div>
-        </button>
+          {/* Weekly Production Widget */}
+          <button 
+            onClick={() => router.push('/earnings')}
+            className="flex-1 hover:bg-white/5 p-3 flex flex-col items-center justify-center transition cursor-pointer text-center h-16"
+          >
+            <Wallet className="w-5 h-5 text-success mb-1" />
+            <h3 className="font-black text-white text-[11px] leading-tight">${weeklyEarnings.toFixed(0)}</h3>
+          </button>
+        </div>
       </header>
 
       {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto p-4 -mt-4 relative z-0 pb-20 space-y-6">
+      <div className="flex-1 overflow-y-auto p-4 -mt-4 relative z-0 pb-20">
+        <div className="space-y-6 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6">
         {activeLoads.length > 0 ? (
            activeLoads.map((load) => (
              <div key={load.id} className="bg-[#1a1a1a] border border-white/10 rounded-3xl p-5 shadow-2xl animate-in slide-in-from-bottom-8 duration-500">
@@ -498,7 +588,7 @@ export default function DriverApp() {
              </div>
            ))
         ) : (
-           <div className="h-full flex flex-col items-center justify-center text-center p-6 mt-10">
+           <div className="h-full flex flex-col items-center justify-center text-center p-6 mt-10 col-span-full">
               <div className="w-24 h-24 bg-white/5 rounded-full flex items-center justify-center mb-6 border border-white/10">
                  <Truck className="w-10 h-10 text-gray-500" />
               </div>
@@ -506,6 +596,7 @@ export default function DriverApp() {
               <p className="text-gray-500">You don't have any loads dispatched to you right now. Stand by for instructions.</p>
            </div>
         )}
+        </div>
       </div>
 
       {/* HOS MODAL */}
@@ -561,7 +652,7 @@ export default function DriverApp() {
       {/* GPS MODAL */}
       {showGpsModal && (
         <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex flex-col justify-end">
-           <div className="bg-[#1a1a1a] border-t border-white/10 rounded-t-[40px] p-6 pb-10 animate-in slide-in-from-bottom-full duration-300">
+           <div className="bg-[#1a1a1a] border-t border-white/10 rounded-t-[40px] p-6 pb-10 animate-in slide-in-from-bottom-full duration-300 max-h-[85vh] overflow-y-auto">
               <div className="w-12 h-1.5 bg-white/20 rounded-full mx-auto mb-6"></div>
               <h3 className="text-center font-bold text-lg mb-6">Choose Navigation App</h3>
               
@@ -586,10 +677,64 @@ export default function DriverApp() {
                     </div>
                     <span className="font-bold text-lg">Apple Maps</span>
                  </a>
+
+                 <a href={getNavUrl('sygic', navAddress)} target="_blank" rel="noreferrer" onClick={() => setShowGpsModal(false)} className="w-full flex items-center p-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl transition">
+                    <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-teal-400 rounded-full flex items-center justify-center mr-4">
+                       <Navigation className="w-5 h-5 text-white" />
+                    </div>
+                    <span className="font-bold text-lg">Sygic Truck Navigation</span>
+                 </a>
+
+                 <a href={getNavUrl('truckerpath', navAddress)} target="_blank" rel="noreferrer" onClick={() => setShowGpsModal(false)} className="w-full flex items-center p-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl transition">
+                    <div className="w-10 h-10 bg-[#0A3D69] rounded-full flex items-center justify-center mr-4">
+                       <Truck className="w-5 h-5 text-white" />
+                    </div>
+                    <span className="font-bold text-lg">Trucker Path</span>
+                 </a>
+
+                 <a href={getNavUrl('hammer', navAddress)} target="_blank" rel="noreferrer" onClick={() => setShowGpsModal(false)} className="w-full flex items-center p-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl transition">
+                    <div className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center mr-4">
+                       <Truck className="w-5 h-5 text-white" />
+                    </div>
+                    <span className="font-bold text-lg">Hammer App</span>
+                 </a>
               </div>
 
               <button onClick={() => setShowGpsModal(false)} className="w-full mt-6 py-4 bg-white/5 hover:bg-white/10 text-white font-bold rounded-2xl transition">Cancel</button>
            </div>
+        </div>
+      )}
+      {/* SECURITY MODAL */}
+      {showSecurityModal && (
+        <div className="absolute inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#111] border border-white/10 rounded-3xl p-6 w-full max-w-sm shadow-2xl relative">
+            <button onClick={() => setShowSecurityModal(false)} className="absolute top-4 right-4 p-2 hover:bg-white/10 rounded-full transition">
+              <X className="w-5 h-5 text-gray-400" />
+            </button>
+            <div className="flex flex-col items-center text-center">
+              <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mb-4 border border-white/10">
+                <ShieldCheck className="w-8 h-8 text-gray-400" />
+              </div>
+              <h2 className="text-xl font-bold mb-2">Security Settings</h2>
+              <p className="text-sm text-gray-500 mb-6">Device securely linked to {driverName}. Admin PIN is required to unlink or change settings.</p>
+              
+              <button 
+                onClick={() => {
+                   setShowSecurityModal(false);
+                   alert("Admin PIN configuration is managed from the main Admin Dashboard.");
+                }} 
+                className="w-full py-3 bg-white/5 hover:bg-white/10 text-white font-bold rounded-xl mb-3 transition"
+              >
+                 Change Admin PIN
+              </button>
+              <button 
+                onClick={() => setShowSecurityModal(false)} 
+                className="w-full py-3 bg-danger/10 hover:bg-danger/20 text-danger border border-danger/20 font-bold rounded-xl transition"
+              >
+                 Unlink Device (Logout)
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

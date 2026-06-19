@@ -228,6 +228,22 @@ export default function FleetPage() {
     setFormUnitNumber(''); setFormVin(''); setFormPlate(''); setFormMake(''); setFormModel(''); setFormYear(''); setFormStatus('active');
   }
 
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  async function handleSyncMotive() {
+    setIsSyncing(true);
+    try {
+      const res = await fetch('/api/motive/sync', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      alert(`Sync Complete! Updated ${data.vehiclesUpdated} vehicles.`);
+      fetchVehicles();
+    } catch (err: any) {
+      alert('Error syncing Motive: ' + err.message);
+    }
+    setIsSyncing(false);
+  }
+
   const filteredFleet = vehicles.filter(v => activeTab === 'all' ? true : v.type === activeTab.slice(0, -1));
 
   return (
@@ -237,13 +253,27 @@ export default function FleetPage() {
           <h1 className="text-3xl font-bold tracking-tight">Fleet Management</h1>
           <p className="text-gray-400 mt-1">Manage trucks, trailers, assignments and compliance documents</p>
         </div>
-        <button 
-          onClick={() => { resetForm(); setShowAddModal(true); }}
-          className="glass-button px-6 py-3 font-semibold bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30 flex items-center"
-        >
-          <Plus className="w-5 h-5 mr-2" />
-          Add Vehicle
-        </button>
+        <div className="flex gap-4">
+          <button 
+            onClick={handleSyncMotive}
+            disabled={isSyncing}
+            className="glass-button px-6 py-3 font-semibold bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 flex items-center disabled:opacity-50"
+          >
+            {isSyncing ? (
+               <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin mr-2"></div>
+            ) : (
+               <Truck className="w-5 h-5 mr-2" />
+            )}
+            {isSyncing ? 'Syncing...' : 'Sync Motive'}
+          </button>
+          <button 
+            onClick={() => { resetForm(); setShowAddModal(true); }}
+            className="glass-button px-6 py-3 font-semibold bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30 flex items-center"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            Add Vehicle
+          </button>
+        </div>
       </header>
 
       <div className="flex-1 flex gap-6 overflow-hidden">
@@ -323,7 +353,7 @@ export default function FleetPage() {
             <div className="flex-1 overflow-auto p-6 space-y-8">
               <section>
                 <h3 className="text-sm font-semibold text-primary uppercase tracking-wider mb-4 flex items-center"><Settings className="w-4 h-4 mr-2"/> Specs & Info</h3>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                   <div className="bg-white/5 p-4 rounded-xl border border-white/10">
                     <div className="text-xs text-gray-500">VIN Number</div>
                     <div className="font-mono text-sm mt-1 break-all">{selectedVehicle.vin}</div>
@@ -342,6 +372,14 @@ export default function FleetPage() {
                       {selectedVehicle.status}
                     </div>
                   </div>
+                  {selectedVehicle.type === 'truck' && (
+                    <div className="bg-blue-500/10 p-4 rounded-xl border border-blue-500/30">
+                      <div className="text-xs text-blue-400">Odometer (Sync)</div>
+                      <div className="font-mono text-lg font-bold text-white mt-1">
+                        {selectedVehicle.current_odometer ? Number(selectedVehicle.current_odometer).toLocaleString() : 'N/A'} mi
+                      </div>
+                    </div>
+                  )}
                 </div>
               </section>
 

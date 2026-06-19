@@ -1,25 +1,31 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Package, Plus, Search, MapPin, User, ChevronRight, X, Edit2, FileText, Upload, DollarSign, Calendar, Truck, Trash2, Wand2 } from 'lucide-react';
+import { Package, Plus, Search, MapPin, User, ChevronRight, X, Edit2, FileText, Upload, DollarSign, Calendar, Truck, Trash2, Wand2, ShieldCheck, Download } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import InvoiceModal from '@/components/InvoiceModal';
+import { exportToExcel } from '@/utils/excelExport';
 
 export default function LoadsPage() {
   const [activeTab, setActiveTab] = useState<'all' | 'active' | 'delivered'>('active');
   const [loads, setLoads] = useState<any[]>([]);
   const [drivers, setDrivers] = useState<any[]>([]);
   const [dispatchers, setDispatchers] = useState<any[]>([]);
+  const [brokers, setBrokers] = useState<any[]>([]);
   const [selectedLoad, setSelectedLoad] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
+  const [settings, setSettings] = useState<any>(null);
 
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [assigningDriverId, setAssigningDriverId] = useState('');
 
   // Form states
   const [formLoadNumber, setFormLoadNumber] = useState('');
+  const [formBrokerId, setFormBrokerId] = useState('');
   const [formBroker, setFormBroker] = useState('');
   const [formBrokerMC, setFormBrokerMC] = useState('');
   const [formRate, setFormRate] = useState('');
@@ -31,10 +37,12 @@ export default function LoadsPage() {
   const [formDeliveryDate, setFormDeliveryDate] = useState('');
   const [formWeight, setFormWeight] = useState('');
   const [formLoadedMiles, setFormLoadedMiles] = useState('');
+  const [formDeadheadMiles, setFormDeadheadMiles] = useState('');
   const [formStatus, setFormStatus] = useState('available');
   const [formDriverId, setFormDriverId] = useState('');
   const [formDispatcherId, setFormDispatcherId] = useState('');
   const [formNotes, setFormNotes] = useState('');
+  const [formAdditionalExpenses, setFormAdditionalExpenses] = useState('');
   const [formStops, setFormStops] = useState<any[]>([]);
 
   // AI Parsing State
@@ -53,7 +61,19 @@ export default function LoadsPage() {
     fetchLoads();
     fetchDrivers();
     fetchDispatchers();
+    fetchBrokers();
+    fetchSettings();
   }, []);
+
+  async function fetchBrokers() {
+    const { data } = await supabase.from('brokers').select('id, name, mc_number');
+    if (data) setBrokers(data);
+  }
+
+  async function fetchSettings() {
+    const { data } = await supabase.from('company_settings').select('*').limit(1).single();
+    if (data) setSettings(data);
+  }
 
   async function fetchLoads() {
     setLoading(true);
@@ -61,7 +81,8 @@ export default function LoadsPage() {
       .from('loads')
       .select(`
         *,
-        users!loads_assigned_driver_id_fkey(first_name, last_name, vehicles!vehicles_assigned_driver_id_fkey(plate_number, unit_number, type))
+        users!loads_assigned_driver_id_fkey(first_name, last_name, vehicles!vehicles_assigned_driver_id_fkey(plate_number, unit_number, type, current_location_lat, current_location_lng)),
+        dispatcher:users!dispatcher_id(first_name, last_name, commission_rate)
       `)
       .order('created_at', { ascending: false });
 
@@ -81,7 +102,7 @@ export default function LoadsPage() {
   }
 
   async function fetchDispatchers() {
-    const { data, error } = await supabase.from('users').select('id, first_name, last_name').in('role', ['admin', 'dispatcher']);
+    const { data, error } = await supabase.from('users').select('id, first_name, last_name').in('role', ['manager', 'admin', 'dispatcher']);
     if (!error && data) setDispatchers(data);
   }
 
@@ -115,11 +136,11 @@ export default function LoadsPage() {
   }
 
   function resetForm() {
-    setFormLoadNumber(''); setFormBroker(''); setFormBrokerMC(''); setFormRate(''); 
+    setFormLoadNumber(''); setFormBrokerId(''); setFormBroker(''); setFormBrokerMC(''); setFormRate(''); 
     setFormPickup(''); setFormPickupAddress(''); setFormPickupDate('');
     setFormDelivery(''); setFormDeliveryAddress(''); setFormDeliveryDate(''); 
-    setFormWeight(''); setFormLoadedMiles('');
-    setFormStatus('available'); setFormDriverId(''); setFormDispatcherId(''); setFormNotes('');
+    setFormWeight(''); setFormLoadedMiles(''); setFormDeadheadMiles('');
+    setFormStatus('available'); setFormDriverId(''); setFormDispatcherId(''); setFormNotes(''); setFormAdditionalExpenses('');
     setFormStops([]);
   }
 
@@ -207,14 +228,75 @@ export default function LoadsPage() {
     }
   }
 
+  async function handleCalculateDeadheadMiles() {
+    if (!formDriverId) {
+       alert("Please select a driver first to calculate deadhead miles based on their truck's location.");
+       return;
+    }
+    const dest = formPickupAddress || formPickup;
+    if (!dest) {
+       alert("Please enter a pickup location/address first.");
+       return;
+    }
+    
+    // Find driver's truck location
+    const { data: userData, error } = await supabase
+       .from('users')
+       .select(`vehicles!vehicles_assigned_driver_id_fkey(current_location_lat, current_location_lng)`)
+       .eq('id', formDriverId)
+       .single();
+       
+    if (error || !userData?.vehicles?.[0]) {
+       alert("Could not find an assigned truck for this driver, or location is unavailable.");
+       return;
+    }
+    
+    const truck = userData.vehicles[0];
+    if (!truck.current_location_lat || !truck.current_location_lng) {
+       alert("Truck's current GPS location is not available in Motive yet.");
+       return;
+    }
+    
+    const origin = `${truck.current_location_lat},${truck.current_location_lng}`;
+    const miles = await calculateMiles(origin, dest);
+    
+    if (miles !== null) {
+       setFormDeadheadMiles(miles.toString());
+    } else {
+       alert("Failed to calculate deadhead miles. Please check the pickup address.");
+    }
+  }
+
   async function handleCreateLoad() {
     if (!formLoadNumber || !formBroker || !formRate) {
       alert("Load Number, Broker, and Rate are required.");
       return;
     }
 
+    let finalBrokerId = formBrokerId;
+
+    // Auto-create broker if not selected from list
+    if (!finalBrokerId && formBroker) {
+       const { data: existing } = await supabase.from('brokers').select('id').ilike('name', formBroker).limit(1);
+       if (existing && existing.length > 0) {
+          finalBrokerId = existing[0].id;
+       } else {
+          const { data: newBroker } = await supabase.from('brokers').insert([{
+             name: formBroker,
+             mc_number: formBrokerMC || null,
+             credit_score: 'A'
+          }]).select('id').single();
+          
+          if (newBroker) {
+             finalBrokerId = newBroker.id;
+             fetchBrokers();
+          }
+       }
+    }
+
     const newLoad = {
       load_number: formLoadNumber,
+      broker_id: finalBrokerId || null,
       broker_name: formBroker,
       broker_mc: formBrokerMC,
       rate: parseFloat(formRate),
@@ -226,9 +308,11 @@ export default function LoadsPage() {
       delivery_date: formDeliveryDate || null,
       weight: formWeight ? parseFloat(formWeight) : null,
       loaded_miles: formLoadedMiles ? parseFloat(formLoadedMiles) : null,
+      deadhead_miles: formDeadheadMiles ? parseFloat(formDeadheadMiles) : 0,
       status: formStatus,
       assigned_driver_id: formDriverId || null,
       dispatcher_id: formDispatcherId || null,
+      additional_expenses: formAdditionalExpenses ? parseFloat(formAdditionalExpenses) : 0,
       notes: formNotes,
       stops: formStops
     };
@@ -238,6 +322,23 @@ export default function LoadsPage() {
       setShowAddModal(false);
       fetchLoads();
       resetForm();
+
+      if (newLoad.assigned_driver_id) {
+        try {
+          await fetch('/api/notify-driver', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              driverId: newLoad.assigned_driver_id,
+              loadNumber: newLoad.load_number,
+              pickupLocation: newLoad.pickup_location,
+              deliveryLocation: newLoad.delivery_location
+            })
+          });
+        } catch (e) {
+          console.error("SMS notification failed on create:", e);
+        }
+      }
     } else {
       alert("Error: " + error.message);
     }
@@ -248,6 +349,47 @@ export default function LoadsPage() {
     const { error } = await supabase.from('loads').update({ status: newStatus }).eq('id', selectedLoad.id);
     if (!error) {
       fetchLoads();
+    }
+  }
+
+  async function handleReconcileFinancials() {
+    if (!selectedLoad) return;
+    
+    const dFeePercent = settings?.dispatcher_fee_percent !== undefined ? Number(settings.dispatcher_fee_percent) : 5;
+    const fFeePercent = settings?.factoring_fee_percent !== undefined ? Number(settings.factoring_fee_percent) : 2.5;
+    const achFee = settings?.factoring_ach_fee !== undefined ? Number(settings.factoring_ach_fee) : 5;
+
+    const rate = selectedLoad.rate || 0;
+    const fuel = loadFuelCost || 0;
+    const dispatchFee = rate * (dFeePercent / 100);
+    const driverPay = rate * 0.25;
+    const driverTaxes = driverPay * 0.0765;
+    const factoringFee = (rate * (fFeePercent / 100)) + achFee;
+    const maintReserve = rate * 0.05;
+    const totalExpenses = dispatchFee + driverPay + driverTaxes + factoringFee + maintReserve + fuel;
+    const netProfit = rate - totalExpenses;
+
+    const { error } = await supabase.from('load_financials').insert([{
+       load_id: selectedLoad.id,
+       rate: rate,
+       driver_pay: driverPay,
+       driver_taxes: driverTaxes,
+       dispatch_fee: dispatchFee,
+       factoring_fee: factoringFee,
+       maintenance_reserve: maintReserve,
+       fuel_costs: fuel,
+       net_profit: netProfit,
+       status: 'reconciled'
+    }]);
+
+    if (!error) {
+       alert("Financials successfully reconciled and frozen for this load.");
+    } else {
+       if (error.code === '23505') {
+          alert("This load has already been reconciled.");
+       } else {
+          alert("Error reconciling financials: " + error.message);
+       }
     }
   }
 
@@ -376,6 +518,22 @@ export default function LoadsPage() {
     }
   };
 
+  const handleExportExcel = () => {
+    const dataToExport = filteredLoads.map(l => ({
+      'Load Number': l.load_number,
+      'Status': l.status,
+      'Broker': l.broker_name,
+      'Rate': l.rate,
+      'Pickup': l.pickup_location,
+      'Pickup Date': l.pickup_date,
+      'Delivery': l.delivery_location,
+      'Delivery Date': l.delivery_date,
+      'Driver': l.users ? `${l.users.first_name} ${l.users.last_name}` : '',
+      'Dispatcher': l.dispatcher ? `${l.dispatcher.first_name} ${l.dispatcher.last_name}` : ''
+    }));
+    exportToExcel(dataToExport, 'loads_export');
+  };
+
   return (
     <div className="h-full flex flex-col gap-6 relative">
       <header className="flex justify-between items-center px-2">
@@ -383,13 +541,22 @@ export default function LoadsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Load Board & Dispatch</h1>
           <p className="text-gray-400 mt-1">Manage freight, track progress, and collect documents</p>
         </div>
-        <button 
-          onClick={() => { resetForm(); setShowAddModal(true); }}
-          className="glass-button px-6 py-3 font-semibold bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30 flex items-center shadow-[0_0_20px_rgba(59,130,246,0.3)]"
-        >
-          <Plus className="w-5 h-5 mr-2" />
-          Create Load
-        </button>
+        <div className="flex gap-4">
+          <button 
+            onClick={handleExportExcel}
+            className="glass-button px-4 py-3 font-semibold bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 flex items-center"
+          >
+            <Download className="w-5 h-5 mr-2" />
+            Export to Excel
+          </button>
+          <button 
+            onClick={() => { resetForm(); setShowAddModal(true); }}
+            className="glass-button px-6 py-3 font-semibold bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30 flex items-center shadow-[0_0_20px_rgba(59,130,246,0.3)]"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            Create Load
+          </button>
+        </div>
       </header>
 
       <div className="flex-1 flex gap-6 overflow-hidden">
@@ -450,7 +617,13 @@ export default function LoadsPage() {
                     {load.users && (
                        <div className="mt-3 text-xs text-gray-400 flex items-center">
                           <User className="w-3 h-3 mr-1" />
-                          Assigned to: <span className="text-white ml-1 font-semibold">{load.users.first_name} {load.users.last_name}</span>
+                          Driver: <span className="text-white ml-1 font-semibold">{load.users.first_name} {load.users.last_name}</span>
+                       </div>
+                    )}
+                    {load.dispatcher && (
+                       <div className="mt-1 text-xs text-gray-400 flex items-center">
+                          <User className="w-3 h-3 mr-1 text-success" />
+                          Dispatcher: <span className="text-success ml-1 font-semibold">{load.dispatcher.first_name} {load.dispatcher.last_name}</span>
                        </div>
                     )}
                   </div>
@@ -485,27 +658,33 @@ export default function LoadsPage() {
                       <span className="text-success font-bold">${selectedLoad.rate?.toLocaleString()}</span>
                     </div>
                     {(() => {
+                      const globalDFee = settings?.dispatcher_fee_percent !== undefined ? Number(settings.dispatcher_fee_percent) : 5;
+                      const dFeePercent = selectedLoad?.dispatcher?.commission_rate != null ? Number(selectedLoad.dispatcher.commission_rate) : globalDFee;
+                      const fFeePercent = settings?.factoring_fee_percent !== undefined ? Number(settings.factoring_fee_percent) : 2.5;
+                      const achFee = settings?.factoring_ach_fee !== undefined ? Number(settings.factoring_ach_fee) : 5;
+
                       const rate = selectedLoad.rate || 0;
                       const fuel = loadFuelCost || 0;
-                      const dispatchFee = rate * 0.05;
+                      const dispatchFee = rate * (dFeePercent / 100);
                       const driverPay = rate * 0.25;
                       const driverTaxes = driverPay * 0.0765;
-                      const factoringFee = (rate * 0.025) + 5;
+                      const factoringFee = (rate * (fFeePercent / 100)) + achFee;
                       const maintReserve = rate * 0.05;
-                      const totalExpenses = dispatchFee + driverPay + driverTaxes + factoringFee + maintReserve + fuel;
+                      const additionalExp = selectedLoad.additional_expenses || 0;
+                      const totalExpenses = dispatchFee + driverPay + driverTaxes + factoringFee + maintReserve + fuel + additionalExp;
                       const netProfit = rate - totalExpenses;
 
                       return (
                         <div className="w-64 text-sm mt-2">
                            <div className="flex justify-between text-warning mb-1">
-                             <span>Factoring (2.5%+$5):</span>
+                             <span>Factoring ({fFeePercent}%+${achFee}):</span>
                              <div className="text-right">
                                <span>-${factoringFee.toFixed(2)}</span>
                                {rate > 0 && <span className="text-[10px] text-warning/70 ml-2 w-8 inline-block text-right">{((factoringFee/rate)*100).toFixed(1)}%</span>}
                              </div>
                            </div>
                            <div className="flex justify-between text-warning mb-1">
-                             <span>Dispatch (5%):</span>
+                             <span>Dispatch ({dFeePercent}%):</span>
                              <div className="text-right">
                                <span>-${dispatchFee.toFixed(2)}</span>
                                {rate > 0 && <span className="text-[10px] text-warning/70 ml-2 w-8 inline-block text-right">{((dispatchFee/rate)*100).toFixed(1)}%</span>}
@@ -525,11 +704,18 @@ export default function LoadsPage() {
                                {rate > 0 && <span className="text-[10px] text-blue-400/70 ml-2 w-8 inline-block text-right">{((maintReserve/rate)*100).toFixed(1)}%</span>}
                              </div>
                            </div>
-                           <div className="flex justify-between text-danger mb-2 border-b border-white/10 pb-2">
+                           <div className="flex justify-between text-danger mb-1">
                              <span>Fuel Costs:</span>
                              <div className="text-right">
                                <span>-${fuel.toFixed(2)}</span>
                                {rate > 0 && <span className="text-[10px] text-danger/70 ml-2 w-8 inline-block text-right">{((fuel/rate)*100).toFixed(1)}%</span>}
+                             </div>
+                           </div>
+                           <div className="flex justify-between text-orange-400 mb-2 border-b border-white/10 pb-2">
+                             <span>Unforeseen/Tolls:</span>
+                             <div className="text-right">
+                               <span>-${additionalExp.toFixed(2)}</span>
+                               {rate > 0 && <span className="text-[10px] text-orange-400/70 ml-2 w-8 inline-block text-right">{((additionalExp/rate)*100).toFixed(1)}%</span>}
                              </div>
                            </div>
                            <div className="flex justify-between mt-1 items-end">
@@ -545,6 +731,31 @@ export default function LoadsPage() {
                                )}
                              </div>
                            </div>
+
+                           {['delivered', 'invoiced', 'paid'].includes(selectedLoad.status) && (
+                             <button 
+                               onClick={async () => {
+                                 const exp = prompt('Enter any unforeseen expenses (Tolls, Lumpers, repairs on route, etc) in $: ', selectedLoad.additional_expenses || '0');
+                                 if (exp !== null) {
+                                   const val = parseFloat(exp) || 0;
+                                   await supabase.from('loads').update({ additional_expenses: val }).eq('id', selectedLoad.id);
+                                   fetchLoads();
+                                 }
+                               }}
+                               className="w-full mt-4 bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/30 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition"
+                             >
+                               Update Unforeseen Expenses
+                             </button>
+                           )}
+                           
+                           {['delivered', 'invoiced', 'paid'].includes(selectedLoad.status) && (
+                             <button 
+                               onClick={handleReconcileFinancials}
+                               className="w-full mt-4 bg-success/10 hover:bg-success/20 text-success border border-success/30 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition"
+                             >
+                               Reconcile & Lock Financials
+                             </button>
+                           )}
                         </div>
                       )
                     })()}
@@ -557,7 +768,7 @@ export default function LoadsPage() {
                  {selectedLoad.status === 'at_pickup' && <button onClick={() => handleUpdateStatus('in_transit')} className="flex-1 bg-orange-600 hover:bg-orange-500 text-white py-2 rounded-lg font-bold text-sm transition">Mark Picked Up</button>}
                  {selectedLoad.status === 'in_transit' && <button onClick={() => handleUpdateStatus('at_delivery')} className="flex-1 bg-yellow-600 hover:bg-yellow-500 text-white py-2 rounded-lg font-bold text-sm transition">Mark At Delivery</button>}
                  {selectedLoad.status === 'at_delivery' && <button onClick={() => handleUpdateStatus('delivered')} className="flex-1 bg-success hover:bg-green-500 text-white py-2 rounded-lg font-bold text-sm transition">Mark Delivered</button>}
-                 {selectedLoad.status === 'delivered' && <button onClick={() => handleUpdateStatus('invoiced')} className="flex-1 bg-purple-600 hover:bg-purple-500 text-white py-2 rounded-lg font-bold text-sm transition">Send Invoice</button>}
+                 {selectedLoad.status === 'delivered' && <button onClick={() => setShowInvoiceModal(true)} className="flex-1 bg-purple-600 hover:bg-purple-500 text-white py-2 rounded-lg font-bold text-sm transition">Generate Invoice</button>}
                  {selectedLoad.status === 'invoiced' && <button onClick={() => handleUpdateStatus('paid')} className="flex-1 bg-green-600 hover:bg-green-500 text-white py-2 rounded-lg font-bold text-sm transition">Mark as Paid</button>}
                  <div className={`px-4 py-2 rounded-lg font-bold text-sm border flex items-center justify-center border-white/10 bg-black/40 text-gray-300 uppercase`}>
                     Status: {selectedLoad.status.replace('_', ' ')}
@@ -639,6 +850,10 @@ export default function LoadsPage() {
                       <div className="text-xs text-gray-500 uppercase">Loaded Miles</div>
                       <div className="font-semibold text-white">{selectedLoad.loaded_miles ? selectedLoad.loaded_miles.toLocaleString() : 'N/A'}</div>
                    </div>
+                   <div>
+                      <div className="text-xs text-warning uppercase">Deadhead Miles</div>
+                      <div className="font-semibold text-warning">{selectedLoad.deadhead_miles ? selectedLoad.deadhead_miles.toLocaleString() : '0'}</div>
+                   </div>
                 </div>
               </section>
 
@@ -670,6 +885,31 @@ export default function LoadsPage() {
                   )}
                 </div>
               </section>
+
+              {/* e-POD / Signature Section */}
+              {selectedLoad.receiver_name && (
+                 <section className="mb-6">
+                    <h3 className="text-sm font-semibold text-success uppercase tracking-wider flex items-center mb-4">
+                       <ShieldCheck className="w-4 h-4 mr-2" /> Electronic Proof of Delivery
+                    </h3>
+                    <div className="bg-success/10 border border-success/30 p-6 rounded-xl flex items-center justify-between">
+                       <div>
+                          <div className="text-xs text-success/70 uppercase font-bold tracking-wider mb-1">Signed By (Receiver)</div>
+                          <div className="text-2xl font-black text-white uppercase tracking-tight">{selectedLoad.receiver_name}</div>
+                          <div className="text-xs text-gray-400 mt-1">Captured securely via Driver App</div>
+                       </div>
+                       {selectedLoad.documents?.find((d: any) => d.doc_type === 'signature') && (
+                          <div className="bg-white rounded-xl p-2 border-2 border-white/20 shadow-xl shadow-success/20">
+                             <img 
+                               src={selectedLoad.documents.find((d: any) => d.doc_type === 'signature').file_url} 
+                               alt="Receiver Signature" 
+                               className="h-20 w-40 object-contain mix-blend-multiply"
+                             />
+                          </div>
+                       )}
+                    </div>
+                 </section>
+              )}
 
               <section>
                 <div className="flex justify-between items-center mb-4">
@@ -764,8 +1004,24 @@ export default function LoadsPage() {
                  <input type="text" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-primary" placeholder="e.g. 123456" value={formBrokerMC} onChange={e => setFormBrokerMC(e.target.value)} />
                </div>
                <div className="col-span-2">
+                 <label className="text-xs text-gray-400 block mb-1">Select Broker (Optional)</label>
+                 <select 
+                   className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-primary mb-2 appearance-none"
+                   value={formBrokerId}
+                   onChange={e => {
+                      setFormBrokerId(e.target.value);
+                      const b = brokers.find(x => x.id === e.target.value);
+                      if (b) {
+                         setFormBroker(b.name);
+                         setFormBrokerMC(b.mc_number);
+                      }
+                   }}
+                 >
+                   <option value="">-- Or type new broker below --</option>
+                   {brokers.map(b => <option key={b.id} value={b.id}>{b.name} {b.mc_number ? `(MC: ${b.mc_number})` : ''}</option>)}
+                 </select>
                  <label className="text-xs text-gray-400 block mb-1">Broker / Shipper Name *</label>
-                 <input type="text" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-primary" value={formBroker} onChange={e => setFormBroker(e.target.value)} />
+                 <input type="text" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-primary" value={formBroker} onChange={e => { setFormBroker(e.target.value); setFormBrokerId(''); }} />
                </div>
                <div className="col-span-2">
                  <label className="text-xs text-gray-400 block mb-1">Gross Rate ($) *</label>
@@ -811,6 +1067,13 @@ export default function LoadsPage() {
                    <button onClick={handleManualCalculateMiles} type="button" className="text-xs text-primary hover:text-white transition font-bold">Auto Calculate</button>
                  </div>
                  <input type="number" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-primary" placeholder="1500" value={formLoadedMiles} onChange={e => setFormLoadedMiles(e.target.value)} />
+               </div>
+               <div>
+                 <div className="flex justify-between items-center mb-1">
+                   <label className="text-xs text-warning block">Deadhead Miles</label>
+                   <button onClick={handleCalculateDeadheadMiles} type="button" className="text-xs text-warning hover:text-white transition font-bold">Calculate (GPS)</button>
+                 </div>
+                 <input type="number" className="w-full bg-warning/5 border border-warning/20 rounded-lg p-3 text-warning font-bold focus:border-warning" placeholder="0" value={formDeadheadMiles} onChange={e => setFormDeadheadMiles(e.target.value)} />
                </div>
 
                {formStops && formStops.length > 0 && (
@@ -955,6 +1218,16 @@ export default function LoadsPage() {
           </div>
         </div>
       )}
+
+      {/* Invoice Modal */}
+      <InvoiceModal 
+        isOpen={showInvoiceModal} 
+        onClose={() => setShowInvoiceModal(false)} 
+        load={selectedLoad}
+        companySettings={settings}
+        onMarkInvoiced={() => handleUpdateStatus('invoiced')}
+      />
+
     </div>
   );
 }

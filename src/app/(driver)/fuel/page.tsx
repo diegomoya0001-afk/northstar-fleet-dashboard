@@ -149,6 +149,16 @@ export default function FuelModule() {
     setLoading(false);
   }
 
+  async function handleDelete(logId: string) {
+    if (!confirm('Are you sure you want to delete this fuel record? This action cannot be undone.')) return;
+    const { error } = await supabase.from('fuel_logs').delete().eq('id', logId);
+    if (!error) {
+      fetchLogs();
+    } else {
+      alert("Error deleting record: " + error.message);
+    }
+  }
+
   async function handleSaveFuel() {
     if (!odometer || !gallons || !totalCost || (!receiptFile)) {
       alert("Please fill all required fields and upload a receipt.");
@@ -353,8 +363,8 @@ export default function FuelModule() {
   return (
     <div className="flex flex-col min-h-screen bg-[#000] text-white">
       {/* Header */}
-      <header className="bg-[#111] p-6 pb-8 rounded-b-[40px] shadow-2xl relative z-10 border-b border-white/5">
-        <div className="flex justify-between items-center">
+      <header className="bg-[#111] p-6 pt-20 pb-8 rounded-b-[40px] shadow-2xl relative z-10 border-b border-white/5">
+        <div className="flex justify-between items-center mb-2">
            <h1 className="text-2xl font-black text-white flex items-center">
               <Droplet className="w-6 h-6 mr-3 text-primary" /> Mileage Log
            </h1>
@@ -416,10 +426,13 @@ export default function FuelModule() {
                       </div>
 
                       {log.receipt_url && (
-                        <a href={log.receipt_url} target="_blank" rel="noreferrer" className="absolute top-5 right-5 text-gray-500 hover:text-primary transition p-2 bg-white/5 rounded-full">
+                        <a href={log.receipt_url} target="_blank" rel="noreferrer" className="absolute top-5 right-16 text-gray-500 hover:text-primary transition p-2 bg-white/5 rounded-full">
                           <FileText className="w-4 h-4" />
                         </a>
                       )}
+                      <button onClick={() => handleDelete(log.id)} className="absolute top-5 right-5 text-gray-500 hover:text-danger transition p-2 bg-white/5 rounded-full">
+                         <X className="w-4 h-4" />
+                      </button>
                    </div>
                  );
               })}
@@ -437,7 +450,7 @@ export default function FuelModule() {
       {/* Add Fuel Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[100] flex flex-col animate-in fade-in slide-in-from-bottom-10 duration-300">
-          <div className="flex justify-between items-center p-6 border-b border-white/10 bg-[#111]">
+          <div className="flex justify-between items-center p-6 pt-12 border-b border-white/10 bg-[#111]">
             <h2 className="text-xl font-bold">Add Fuel Record</h2>
             <button onClick={() => setShowModal(false)} className="p-2 bg-white/5 rounded-full text-gray-400 hover:text-white">
               <X className="w-5 h-5" />

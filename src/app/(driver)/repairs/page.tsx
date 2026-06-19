@@ -213,8 +213,8 @@ export default function RepairsModule() {
   return (
     <div className="flex flex-col min-h-screen bg-[#000] text-white">
       {/* Header */}
-      <header className="bg-[#111] p-6 pb-8 rounded-b-[40px] shadow-2xl relative z-10 border-b border-white/5">
-        <div className="flex justify-between items-center">
+      <header className="bg-[#111] p-6 pt-20 pb-8 rounded-b-[40px] shadow-2xl relative z-10 border-b border-white/5">
+        <div className="flex justify-between items-center mb-6">
            <h1 className="text-2xl font-black text-white flex items-center">
               <Wrench className="w-6 h-6 mr-3 text-warning" /> Repairs & Maintenance
            </h1>
@@ -297,7 +297,7 @@ export default function RepairsModule() {
       {/* Add Repair Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[100] flex flex-col animate-in fade-in slide-in-from-bottom-10 duration-300">
-          <div className="flex justify-between items-center p-6 border-b border-white/10 bg-[#111]">
+          <div className="flex justify-between items-center p-6 pt-12 border-b border-white/10 bg-[#111]">
             <h2 className="text-xl font-bold text-warning flex items-center"><Wrench className="w-5 h-5 mr-2" /> Log Repair</h2>
             <button onClick={() => setShowModal(false)} className="p-2 bg-white/5 rounded-full text-gray-400 hover:text-white">
               <X className="w-5 h-5" />

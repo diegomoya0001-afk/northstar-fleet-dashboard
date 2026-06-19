@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Clock, FileText, User, FolderOpen, Droplet } from "lucide-react";
+import { Home, Clock, FileText, User, FolderOpen, Droplet, ArrowLeft } from "lucide-react";
 
 export default function DriverLayout({
   children,
@@ -11,18 +11,33 @@ export default function DriverLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const [isAdmin, setIsAdmin] = React.useState(false);
+
+  React.useEffect(() => {
+    const role = localStorage.getItem('fleet_user_role');
+    if (role === 'admin') {
+      setIsAdmin(true);
+    }
+  }, []);
 
   return (
     <div className="h-screen w-full bg-[#000] flex justify-center overflow-hidden">
-      {/* Mobile constraint container for desktop view */}
-      <div className="w-full max-w-md h-full bg-[#0a0a0a] shadow-2xl relative flex flex-col sm:border-x sm:border-white/10">
-        {/* Main Content Area */}
-        <div className="flex-1 overflow-y-auto hide-scrollbar">
+      {/* Mobile constraint container for desktop view, responsive for iPads */}
+      <div className="w-full max-w-md md:max-w-4xl lg:max-w-6xl h-full bg-[#0a0a0a] shadow-2xl relative flex flex-col sm:border-x sm:border-white/10 mx-auto">
+        <div className="flex-1 overflow-y-auto hide-scrollbar relative">
+          {isAdmin && (
+             <div className="absolute top-4 left-4 z-50">
+                <Link href="/" className="flex items-center px-4 py-2 bg-primary hover:bg-blue-600 text-white text-sm font-bold rounded-full shadow-lg transition-transform active:scale-95">
+                   <ArrowLeft className="w-4 h-4 mr-2" />
+                   Back to Admin
+                </Link>
+             </div>
+          )}
           {children}
         </div>
 
         {/* Bottom Navigation Bar */}
-        <nav className="bg-[#111] border-t border-white/5 pb-safe pt-2 px-6 flex justify-between items-center shadow-[0_-10px_40px_rgba(0,0,0,0.5)] z-50">
+        <nav className="bg-[#111] border-t border-white/5 pb-safe pt-2 px-6 flex justify-between md:justify-around items-center shadow-[0_-10px_40px_rgba(0,0,0,0.5)] z-50">
            <Link href="/driver-app" className={`flex flex-col items-center p-2 transition-colors ${pathname === '/driver-app' ? 'text-primary' : 'text-gray-500 hover:text-gray-300'}`}>
               <div className={`p-1.5 rounded-xl mb-1 ${pathname === '/driver-app' ? 'bg-primary/20' : 'bg-transparent'}`}>
                  <Home className="w-6 h-6" />

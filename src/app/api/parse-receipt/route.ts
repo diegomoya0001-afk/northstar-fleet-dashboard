@@ -51,13 +51,15 @@ export async function POST(request: Request) {
     }
 
     // List of models to try in order of preference
-    const modelsToTry = ['gemini-1.5-flash-latest', 'gemini-flash-latest', 'gemini-1.5-flash'];
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-flash-latest'];
     let errors: any[] = [];
 
     for (const modelName of modelsToTry) {
-      try {
-        console.log(`Trying model: ${modelName} for fuel receipt`);
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
+      let retries = 2;
+      while (retries > 0) {
+        try {
+          console.log(`Trying model: ${modelName} for fuel receipt`);
+          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -71,7 +73,7 @@ export async function POST(request: Request) {
                   - "gallons": The total gallons/liters of fuel pumped, just the number as a string (e.g. "50.5").
                   - "pricePerGallon": The price per gallon/liter, just the number as a string (e.g. "3.50").
                   - "totalCost": The total cost paid, just the number as a string (e.g. "150.00").
-                  - "gasStation": The name of the gas station (e.g. "Pilot", "Love's", "Chevron"). If not found, return an empty string.
+                  - "gasStation": The name of the gas station (e.g. "Love's", "Pilot", "Chevron", "TA"). Do NOT guess. Read exactly what is printed on the logo or text. If it says Love's, return Love's. If you cannot read it clearly, return an empty string "".
                   - "state": The 2-letter abbreviation of the US State where the purchase was made (e.g. "TX", "FL", "CA"). If not found, return an empty string.
                 ` },
                 { 
@@ -92,8 +94,17 @@ export async function POST(request: Request) {
         if (!response.ok) {
           const errorText = await response.text();
           console.warn(`Model ${modelName} failed:`, errorText);
+          
+          if (response.status === 503 || response.status === 429) {
+            retries--;
+            if (retries > 0) {
+               await new Promise(r => setTimeout(r, 1000));
+               continue; // retry same model
+            }
+          }
+          
           errors.push(errorText);
-          continue; // Try next model
+          break; // Try next model if 404 or out of retries
         }
 
         const aiData = await response.json();
@@ -113,8 +124,10 @@ export async function POST(request: Request) {
       } catch (err: any) {
         errors.push(err.message);
         console.error(`Error with model ${modelName}:`, err.message);
+        break; // try next model
       }
     }
+  }
 
     return NextResponse.json({ error: 'All Gemini models failed. ' + JSON.stringify(errors) }, { status: 500 });
 

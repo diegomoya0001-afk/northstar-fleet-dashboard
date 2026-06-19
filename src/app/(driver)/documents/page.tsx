@@ -26,7 +26,7 @@ export default function DriverDocuments() {
       .select('id, type')
       .eq('assigned_driver_id', driverId);
 
-    let entityIds = [driverId];
+    let entityIds = [driverId, '00000000-0000-0000-0000-000000000000']; // Include driver and company
     if (!vError && vData && vData.length > 0) {
        setVehicles(vData);
        entityIds = [...entityIds, ...vData.map((v: any) => v.id)];
@@ -49,18 +49,19 @@ export default function DriverDocuments() {
   const trailer = vehicles.find(v => v.type === 'trailer');
 
   // Helper to find specific documents
-  const getDocument = (typeMatch: string, entityId?: string) => {
+  const getDocument = (typeMatch: string, entityId?: string, notesMatch?: string) => {
     return documents.find(d => {
        const matchType = d.doc_type?.toLowerCase().includes(typeMatch.toLowerCase());
        const matchEntity = entityId ? d.entity_id === entityId : true;
-       return matchType && matchEntity;
+       const matchNotes = notesMatch ? d.notes?.toLowerCase().includes(notesMatch.toLowerCase()) : true;
+       return matchType && matchEntity && matchNotes;
     });
   };
 
-  const cabCard = getDocument('registration', truck?.id);
-  const insurance = getDocument('insurance');
-  const truckInspection = getDocument('annual_inspection', truck?.id) || getDocument('truck inspection');
-  const trailerInspection = getDocument('annual_inspection', trailer?.id) || getDocument('trailer inspection');
+  const cabCard = getDocument('registration', truck?.id) || getDocument('cab card', truck?.id) || getDocument('registration', trailer?.id) || getDocument('cab card', trailer?.id) || getDocument('company_doc', '00000000-0000-0000-0000-000000000000', 'Cab Card');
+  const insurance = getDocument('insurance', truck?.id) || getDocument('insurance', trailer?.id) || getDocument('company_doc', '00000000-0000-0000-0000-000000000000', 'Insurance') || getDocument('insurance');
+  const truckInspection = getDocument('annual_inspection', truck?.id) || getDocument('inspection', truck?.id) || getDocument('truck inspection');
+  const trailerInspection = getDocument('annual_inspection', trailer?.id) || getDocument('inspection', trailer?.id) || getDocument('trailer inspection');
 
   const requiredDocs = [
     { title: 'Cab Card', doc: cabCard, icon: <FolderOpen className="w-6 h-6 text-primary" /> },
@@ -72,8 +73,8 @@ export default function DriverDocuments() {
   return (
     <div className="flex flex-col min-h-screen bg-[#000] text-white">
       {/* Header */}
-      <header className="bg-[#111] p-6 pb-8 rounded-b-[40px] shadow-2xl relative z-10 border-b border-white/5">
-        <div className="flex justify-between items-center">
+      <header className="bg-[#111] p-6 pt-20 pb-8 rounded-b-[40px] shadow-2xl relative z-10 border-b border-white/5">
+        <div className="flex justify-between items-center mb-2">
            <h1 className="text-2xl font-black text-white flex items-center">
               <FolderOpen className="w-6 h-6 mr-3 text-primary" /> Glovebox
            </h1>

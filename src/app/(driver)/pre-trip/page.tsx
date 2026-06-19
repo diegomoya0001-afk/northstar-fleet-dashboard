@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckCircle, AlertTriangle, Camera, ArrowRight, ArrowLeft, ClipboardCheck, ShieldCheck } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 const CHECKLIST = [
   {
@@ -141,7 +142,7 @@ export default function PreTripInspection() {
     return true;
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (!isSectionComplete()) {
       alert('Please review all items in this section and provide notes for any defects before proceeding.');
       return;
@@ -153,13 +154,35 @@ export default function PreTripInspection() {
     } else {
       // Final submission
       let hasCritical = false;
+      const allDefects: any[] = [];
       Object.keys(defectDetails).forEach(sec => {
         Object.keys(defectDetails[Number(sec)]).forEach(item => {
-          if (defectDetails[Number(sec)][Number(item)].critical) {
-            hasCritical = true;
-          }
+           const def = defectDetails[Number(sec)][Number(item)];
+           if (def.critical) hasCritical = true;
+           allDefects.push({
+              section: CHECKLIST[Number(sec)].title,
+              item: CHECKLIST[Number(sec)].items[Number(item)],
+              critical: def.critical,
+              note: def.note
+           });
         });
       });
+
+      const driverId = localStorage.getItem('fleet_user_id');
+      const status = hasCritical ? 'failed' : (allDefects.length > 0 ? 'passed_with_defect' : 'passed');
+
+      const { error } = await supabase.from('inspections').insert([{
+         driver_id: driverId,
+         type: 'pre_trip',
+         status: status,
+         defects: allDefects,
+         notes: 'Submitted via Driver App'
+      }]);
+
+      if (error) {
+         alert("Error saving inspection: " + error.message);
+         return;
+      }
 
       if (hasCritical) {
         alert('INSPECTION FAILED (OUT OF SERVICE). Critical defects were reported. Vehicle cannot be dispatched. A maintenance ticket has been created.');
@@ -204,7 +227,7 @@ export default function PreTripInspection() {
   return (
     <div className="flex flex-col min-h-full bg-[#0a0a0a] text-white">
       {/* Header */}
-      <header className="bg-[#111] p-4 flex items-center justify-between sticky top-0 z-50 border-b border-white/10 shadow-lg">
+      <header className="bg-[#111] p-4 pt-20 flex items-center justify-between sticky top-0 z-50 border-b border-white/10 shadow-lg">
         <button onClick={() => router.push('/driver-app')} className="p-2 -ml-2 text-primary hover:bg-white/5 rounded-full transition">
           <ArrowLeft className="w-6 h-6" />
         </button>

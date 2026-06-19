@@ -10,7 +10,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(true);
   const [showPinModal, setShowPinModal] = useState(false);
   const [pinCode, setPinCode] = useState('');
-  const [selectedAdmin, setSelectedAdmin] = useState<any>(null);
+  const [selectedUser, setSelectedUser] = useState<any>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -29,6 +29,7 @@ export default function LoginPage() {
     localStorage.setItem('fleet_user_id', user.id);
     localStorage.setItem('fleet_user_role', user.role);
     localStorage.setItem('fleet_user_name', `${user.first_name} ${user.last_name}`);
+    localStorage.setItem('fleet_module_access', JSON.stringify(user.module_access || ['all']));
 
     if (user.role === 'driver') {
       router.push('/driver-app');
@@ -37,27 +38,29 @@ export default function LoginPage() {
     }
   };
 
-  const handleAdminClick = (user: any) => {
-    setSelectedAdmin(user);
+  const handleUserClick = (user: any) => {
+    setSelectedUser(user);
     setShowPinModal(true);
   };
 
   const handlePinSubmit = () => {
-    if (pinCode === '0000') {
+    const correctPin = selectedUser?.security_pin || '0000';
+    if (pinCode === correctPin) {
       setShowPinModal(false);
-      handleLogin(selectedAdmin);
+      handleLogin(selectedUser);
     } else {
       alert('Incorrect PIN');
       setPinCode('');
     }
   };
 
-  const adminUsers = users.filter(u => u.role === 'admin' || u.role === 'dispatcher');
+  const adminUsers = users.filter(u => ['manager', 'admin'].includes(u.role));
   const displayAdmins = adminUsers.length > 0 ? adminUsers : [{
-    id: 'default-admin',
+    id: 'default-manager',
     first_name: 'Diego',
-    last_name: '(System Admin)',
-    role: 'admin'
+    last_name: 'Moya',
+    role: 'manager',
+    module_access: ['all']
   }];
 
   return (
@@ -83,7 +86,7 @@ export default function LoginPage() {
                 {displayAdmins.map(u => (
                   <button 
                     key={u.id}
-                    onClick={() => handleAdminClick(u)}
+                    onClick={() => handleUserClick(u)}
                     className="w-full flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/10 hover:bg-primary/20 hover:border-primary/50 transition group"
                   >
                     <div className="flex items-center">
@@ -107,7 +110,7 @@ export default function LoginPage() {
                 {users.filter(u => u.role === 'driver').map(u => (
                   <button 
                     key={u.id}
-                    onClick={() => handleLogin(u)}
+                    onClick={() => handleUserClick(u)}
                     className="w-full flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/10 hover:bg-success/20 hover:border-success/50 transition group"
                   >
                     <div className="flex items-center">
@@ -135,7 +138,7 @@ export default function LoginPage() {
               <div className="w-16 h-16 bg-red-500/20 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-500/30">
                 <User className="w-8 h-8" />
               </div>
-              <h2 className="text-xl font-bold mb-2 text-white">Admin Access</h2>
+              <h2 className="text-xl font-bold mb-2 text-white">{selectedUser?.role === 'driver' ? 'Driver Access' : 'Admin Access'}</h2>
               <p className="text-gray-400 text-sm mb-6">Enter your 4-digit PIN to continue</p>
               
               <input 
