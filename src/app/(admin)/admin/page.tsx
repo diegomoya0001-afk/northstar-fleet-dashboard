@@ -93,7 +93,8 @@ export default function AdminPage() {
       doc_type: 'company_doc',
       file_url: publicUrl,
       notes: uploadName,
-      expiration_date: uploadExpDate || null
+      expiration_date: uploadExpDate || null,
+      expiry_date: uploadExpDate || null
     }]);
 
     if (!dbError) {
@@ -121,6 +122,7 @@ export default function AdminPage() {
     if (!editingDoc) return;
     const { error } = await supabase.from('documents').update({
       notes: editName,
+      expiration_date: editExpDate || null,
       expiry_date: editExpDate || null
     }).eq('id', editingDoc.id);
     
