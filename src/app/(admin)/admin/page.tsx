@@ -32,9 +32,10 @@ export default function AdminPage() {
   async function fetchDocs() {
     const { data } = await supabase.from('documents').select('*');
     if (data) {
-      const radar = data.filter(d => d.expiration_date).map(d => {
+      const radar = data.filter(d => d.expiration_date || d.expiry_date).map(d => {
          // Force UTC midnight to avoid timezone shift locally
-         const exp = new Date(d.expiration_date + 'T00:00:00');
+         const expVal = d.expiration_date || d.expiry_date;
+         const exp = new Date(expVal + 'T00:00:00');
          const now = new Date();
          const diffTime = exp.getTime() - now.getTime();
          const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -191,7 +192,7 @@ export default function AdminPage() {
                     <td className="py-4 text-gray-300">
                       <span className="bg-white/10 px-2 py-1 rounded text-xs uppercase tracking-wider">{doc.entity_type} {doc.entity_id && doc.entity_id !== '00000000-0000-0000-0000-000000000000' ? doc.entity_id.split('-')[0] : ''}</span>
                     </td>
-                    <td className="py-4 font-mono text-sm">{doc.expiration_date}</td>
+                    <td className="py-4 font-mono text-sm">{doc.expiration_date || doc.expiry_date}</td>
                     <td className="py-4 text-right">
                       {doc.status === 'ok' && <span className="text-success bg-success/10 px-3 py-1 rounded-full text-xs font-bold inline-flex items-center"><CheckCircle2 className="w-3 h-3 mr-1"/> Valid ({doc.daysLeft} days)</span>}
                       {doc.status === 'warning' && <span className="text-warning bg-warning/10 px-3 py-1 rounded-full text-xs font-bold inline-flex items-center"><Clock className="w-3 h-3 mr-1"/> Renew Soon ({doc.daysLeft} days)</span>}
@@ -220,7 +221,7 @@ export default function AdminPage() {
                     <FileText className="w-8 h-8 text-blue-400 mb-3" />
                     <h3 className="font-bold text-white mb-1">{doc.notes || 'Company Document'}</h3>
                     <p className="text-xs text-gray-400">Uploaded: {new Date(doc.created_at).toLocaleDateString()}</p>
-                    {doc.expiration_date && <p className="text-xs text-warning mt-1">Expires: {doc.expiration_date}</p>}
+                    {(doc.expiration_date || doc.expiry_date) && <p className="text-xs text-warning mt-1">Expires: {doc.expiration_date || doc.expiry_date}</p>}
                   </a>
                 </div>
               ))}
