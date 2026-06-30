@@ -24,6 +24,11 @@ export default function AdminPage() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
 
+  // Edit State
+  const [editingDoc, setEditingDoc] = useState<any>(null);
+  const [editName, setEditName] = useState('');
+  const [editExpDate, setEditExpDate] = useState('');
+
   React.useEffect(() => {
     fetchUsers();
     fetchDocs();
@@ -110,6 +115,21 @@ export default function AdminPage() {
      await supabase.storage.from('documents').remove([filePath]);
      await supabase.from('documents').delete().eq('id', id);
      fetchDocs();
+  }
+
+  async function handleEditSave() {
+    if (!editingDoc) return;
+    const { error } = await supabase.from('documents').update({
+      notes: editName,
+      expiry_date: editExpDate || null
+    }).eq('id', editingDoc.id);
+    
+    if (error) {
+      alert("Error updating document: " + error.message);
+    } else {
+      setEditingDoc(null);
+      fetchDocs();
+    }
   }
 
   const safeCount = radarDocs.filter(d => d.status === 'ok').length;
@@ -215,8 +235,15 @@ export default function AdminPage() {
             <h2 className="text-xl font-bold mb-6 flex items-center"><Building className="w-5 h-5 mr-2 text-primary" /> Company Documents</h2>
             <div className="grid grid-cols-2 gap-4">
               {vaultDocs.map(doc => (
-                <div key={doc.id} className="border border-white/10 rounded-xl p-4 bg-white/5 hover:border-primary/50 transition flex flex-col justify-between group relative">
-                  <button onClick={() => handleDeleteDoc(doc.id, doc.file_url)} className="absolute top-2 right-2 text-gray-500 hover:text-red-500 opacity-0 group-hover:opacity-100 transition"><AlertTriangle className="w-4 h-4"/></button>
+                <div key={doc.id} className="border border-white/10 rounded-xl p-4 bg-white/5 hover:border-primary/50 transition flex flex-col justify-between relative group">
+                  <div className="absolute top-2 right-2 flex space-x-2 bg-black/50 p-1 rounded-lg">
+                    <button onClick={(e) => { e.stopPropagation(); setEditingDoc(doc); setEditName(doc.notes || ''); setEditExpDate(doc.expiration_date || doc.expiry_date || ''); }} className="text-gray-400 hover:text-blue-400 p-1 rounded transition" title="Edit">
+                      <Edit className="w-4 h-4"/>
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); handleDeleteDoc(doc.id, doc.file_url); }} className="text-gray-400 hover:text-red-500 p-1 rounded transition" title="Delete">
+                      <AlertTriangle className="w-4 h-4"/>
+                    </button>
+                  </div>
                   <a href={doc.file_url} target="_blank" rel="noreferrer" className="block cursor-pointer flex-1">
                     <FileText className="w-8 h-8 text-blue-400 mb-3" />
                     <h3 className="font-bold text-white mb-1">{doc.notes || 'Company Document'}</h3>
@@ -249,6 +276,29 @@ export default function AdminPage() {
                  {uploading ? 'Uploading...' : 'Save Document'}
                </button>
              </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {editingDoc && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+          <div className="glass-panel p-6 w-96 max-w-[90%] border border-white/10">
+            <h3 className="text-lg font-bold mb-4">Edit Document</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">Document Name</label>
+                <input type="text" value={editName} onChange={e => setEditName(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded p-2 text-sm focus:border-primary outline-none" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">Expiration Date</label>
+                <input type="date" value={editExpDate} onChange={e => setEditExpDate(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded p-2 text-sm focus:border-primary outline-none" style={{colorScheme: 'dark'}} />
+              </div>
+              <div className="flex space-x-3 pt-4">
+                <button onClick={() => setEditingDoc(null)} className="flex-1 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-sm font-bold transition">Cancel</button>
+                <button onClick={handleEditSave} className="flex-1 px-4 py-2 bg-primary hover:bg-blue-600 text-white rounded-lg text-sm font-bold transition">Save Changes</button>
+              </div>
+            </div>
           </div>
         </div>
       )}
