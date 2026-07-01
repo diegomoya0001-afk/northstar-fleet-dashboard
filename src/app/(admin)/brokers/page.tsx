@@ -307,6 +307,18 @@ export default function BrokersPage() {
                  <button onClick={closeModal} className="text-gray-400 hover:text-white transition"><X className="w-5 h-5"/></button>
               </div>
               <div className="p-6">
+                 {editingBroker && (
+                    <div className="grid grid-cols-2 gap-4 mb-6">
+                       <div className="bg-black/50 rounded-xl p-4 border border-white/5 flex flex-col items-center justify-center">
+                          <div className="text-xs text-gray-500 mb-1 flex items-center"><Activity className="w-4 h-4 mr-1" /> Total Loads</div>
+                          <div className="text-2xl font-black text-white">{editingBroker.totalLoads}</div>
+                       </div>
+                       <div className="bg-success/5 rounded-xl p-4 border border-success/10 flex flex-col items-center justify-center">
+                          <div className="text-xs text-success mb-1 flex items-center"><DollarSign className="w-4 h-4 mr-1" /> Avg RPM</div>
+                          <div className="text-2xl font-black text-success">${editingBroker.avgRpm?.toFixed(2) || '0.00'}</div>
+                       </div>
+                    </div>
+                 )}
                  <div className="grid grid-cols-2 gap-6 mb-6">
                     <div className="col-span-2 md:col-span-1">
                        <label className="text-xs font-bold text-gray-400 block mb-1">Company Name *</label>
