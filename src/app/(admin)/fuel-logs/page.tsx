@@ -26,6 +26,7 @@ export default function AdminFuelLogs() {
   const [editPrice, setEditPrice] = useState('');
   const [editTotal, setEditTotal] = useState('');
   const [editState, setEditState] = useState('');
+  const [editFuelType, setEditFuelType] = useState('');
 
   // IFTA Filter States
   const [iftaYear, setIftaYear] = useState(new Date().getFullYear().toString());
@@ -69,6 +70,7 @@ export default function AdminFuelLogs() {
     setEditPrice(log.price_per_gallon?.toString() || '');
     setEditTotal(log.total_cost?.toString() || '');
     setEditState(log.state || 'TX');
+    setEditFuelType(log.fuel_type || 'Diesel');
   }
 
   async function handleUpdateLog() {
@@ -79,7 +81,8 @@ export default function AdminFuelLogs() {
       gallons: parseFloat(editGallons),
       price_per_gallon: parseFloat(editPrice || "0"),
       total_cost: parseFloat(editTotal),
-      state: editState
+      state: editState,
+      fuel_type: editFuelType
     }).eq('id', editingLog.id);
 
     if (!error) {
@@ -112,15 +115,22 @@ export default function AdminFuelLogs() {
       let costPerMile = null;
       
       const origIndex = logs.findIndex(l => l.id === log.id);
-      // Ensure logs are sorted by odometer or created_at descending (they are created_at descending)
-      const prevLogIndex = logs.findIndex((l, i) => i > origIndex && l.vehicle_id === log.vehicle_id);
       
-      if (prevLogIndex !== -1) {
-        const prevLog = logs[prevLogIndex];
-        distance = log.odometer - prevLog.odometer;
-        if (distance > 0) {
-          if (log.gallons > 0) mpg = (distance / log.gallons).toFixed(2);
-          if (log.total_cost > 0) costPerMile = (log.total_cost / distance).toFixed(3);
+      if (log.fuel_type === 'Diesel' || !log.fuel_type) {
+        // Find the previous DIESEL log for the same vehicle
+        const prevLogIndex = logs.findIndex((l, i) => 
+          i > origIndex && 
+          l.vehicle_id === log.vehicle_id && 
+          (l.fuel_type === 'Diesel' || !l.fuel_type)
+        );
+        
+        if (prevLogIndex !== -1) {
+          const prevLog = logs[prevLogIndex];
+          distance = log.odometer - prevLog.odometer;
+          if (distance > 0) {
+            if (log.gallons > 0) mpg = (distance / log.gallons).toFixed(2);
+            if (log.total_cost > 0) costPerMile = (log.total_cost / distance).toFixed(3);
+          }
         }
       }
       return { ...log, mpg, distance, costPerMile };
@@ -378,14 +388,25 @@ export default function AdminFuelLogs() {
               </div>
 
               <div className="space-y-4 mb-6">
-                 <div>
-                    <label className="text-xs text-gray-400 font-bold block mb-1">State</label>
-                    <select value={editState} onChange={e => setEditState(e.target.value)} className="w-full bg-[#000] border border-white/10 rounded-xl p-3 text-white outline-none focus:border-primary">
-                       <option value="">Unknown</option>
-                       {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                 </div>
-                 <div>
+                  <div className="grid grid-cols-2 gap-4">
+                     <div>
+                        <label className="text-xs text-gray-400 font-bold block mb-1">State</label>
+                        <select value={editState} onChange={e => setEditState(e.target.value)} className="w-full bg-[#000] border border-white/10 rounded-xl p-3 text-white outline-none focus:border-primary">
+                           <option value="">Unknown</option>
+                           {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                     </div>
+                     <div>
+                        <label className="text-xs text-gray-400 font-bold block mb-1">Fuel Type</label>
+                        <select value={editFuelType} onChange={e => setEditFuelType(e.target.value)} className="w-full bg-[#000] border border-white/10 rounded-xl p-3 text-white outline-none focus:border-primary">
+                          <option value="Diesel">Diesel (Tractor)</option>
+                          <option value="Reefer">Diesel (Reefer)</option>
+                          <option value="DEF">DEF</option>
+                          <option value="Gas">Gasoline</option>
+                        </select>
+                     </div>
+                  </div>
+                  <div>
                     <label className="text-xs text-gray-400 font-bold block mb-1">Odometer</label>
                     <input type="text" inputMode="numeric" value={editOdometer ? Number(editOdometer).toLocaleString() : ''} onChange={e => setEditOdometer(e.target.value.replace(/\D/g, ''))} className="w-full bg-[#000] border border-white/10 rounded-xl p-3 text-white outline-none focus:border-primary" />
                  </div>

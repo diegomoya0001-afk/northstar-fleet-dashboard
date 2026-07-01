@@ -349,18 +349,24 @@ export default function FuelModule() {
       let distance = null;
       let costPerMile = null;
       
-      // Find the next chronologically previous log for the SAME vehicle
-      const prevLogIndex = logs.findIndex((l, i) => i > index && l.vehicle_id === log.vehicle_id);
-      
-      if (prevLogIndex !== -1) {
-        const prevLog = logs[prevLogIndex];
-        distance = log.odometer - prevLog.odometer;
-        if (distance > 0) {
-          if (log.gallons > 0) {
-            mpg = (distance / log.gallons).toFixed(2);
-          }
-          if (log.total_cost > 0) {
-            costPerMile = (log.total_cost / distance).toFixed(3);
+      if (log.fuel_type === 'Diesel' || !log.fuel_type) {
+        // Find the next chronologically previous log for the SAME vehicle and SAME fuel type
+        const prevLogIndex = logs.findIndex((l, i) => 
+          i > index && 
+          l.vehicle_id === log.vehicle_id && 
+          (l.fuel_type === 'Diesel' || !l.fuel_type)
+        );
+        
+        if (prevLogIndex !== -1) {
+          const prevLog = logs[prevLogIndex];
+          distance = log.odometer - prevLog.odometer;
+          if (distance > 0) {
+            if (log.gallons > 0) {
+              mpg = (distance / log.gallons).toFixed(2);
+            }
+            if (log.total_cost > 0) {
+              costPerMile = (log.total_cost / distance).toFixed(3);
+            }
           }
         }
       }
@@ -500,9 +506,10 @@ export default function FuelModule() {
                <div>
                   <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">Fuel Type *</label>
                   <select value={fuelType} onChange={e => setFuelType(e.target.value)} className="w-full bg-[#000] border border-white/10 rounded-xl p-3 text-base font-bold outline-none focus:border-primary transition">
-                    <option value="Diesel">Diesel</option>
+                    <option value="Diesel">Diesel (Tractor)</option>
+                    <option value="Reefer">Diesel (Reefer)</option>
                     <option value="DEF">DEF</option>
-                    <option value="Gas">Gas</option>
+                    <option value="Gas">Gasoline</option>
                   </select>
                </div>
 
