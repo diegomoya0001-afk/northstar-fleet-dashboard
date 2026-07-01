@@ -104,6 +104,31 @@ export default function AdminFuelLogs() {
     return driverName.includes(searchStr) || station.includes(searchStr) || truck.includes(searchStr);
   });
 
+  // Calculate MPG for filteredLogs
+  const getLogsWithMPG = () => {
+    return filteredLogs.map((log) => {
+      let mpg = null;
+      let distance = null;
+      let costPerMile = null;
+      
+      const origIndex = logs.findIndex(l => l.id === log.id);
+      // Ensure logs are sorted by odometer or created_at descending (they are created_at descending)
+      const prevLogIndex = logs.findIndex((l, i) => i > origIndex && l.vehicle_id === log.vehicle_id);
+      
+      if (prevLogIndex !== -1) {
+        const prevLog = logs[prevLogIndex];
+        distance = log.odometer - prevLog.odometer;
+        if (distance > 0) {
+          if (log.gallons > 0) mpg = (distance / log.gallons).toFixed(2);
+          if (log.total_cost > 0) costPerMile = (log.total_cost / distance).toFixed(3);
+        }
+      }
+      return { ...log, mpg, distance, costPerMile };
+    });
+  };
+
+  const finalLogs = getLogsWithMPG();
+
   // IFTA Grouping
   const getIftaData = () => {
     let qStartMonth = 0; let qEndMonth = 2;
@@ -216,14 +241,14 @@ export default function AdminFuelLogs() {
                       Loading logs...
                     </td>
                   </tr>
-                ) : filteredLogs.length === 0 ? (
+                ) : finalLogs.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
                       No fuel records found
                     </td>
                   </tr>
                 ) : (
-                  filteredLogs.map(log => {
+                  finalLogs.map(log => {
                     const date = new Date(log.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                     const time = log.refuel_time || new Date(log.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
                     const driverName = log.driver ? `${log.driver.first_name} ${log.driver.last_name}` : 'Anonymous User';
@@ -249,6 +274,7 @@ export default function AdminFuelLogs() {
                             {truck}
                           </div>
                           <div className="text-xs text-gray-500 mt-1">Odo: {Number(log.odometer).toLocaleString()} mi</div>
+                          {log.distance && <div className="text-[10px] text-gray-400 mt-0.5">Dist: {log.distance.toLocaleString()} mi</div>}
                         </td>
                         <td className="px-6 py-4">
                           <div className="font-bold flex items-center">
@@ -261,9 +287,11 @@ export default function AdminFuelLogs() {
                         <td className="px-6 py-4 text-right">
                           <div className="font-bold">{Number(log.gallons).toFixed(3)}</div>
                           <div className="text-xs text-gray-500 mt-1">${Number(log.price_per_gallon).toFixed(3)}/gal</div>
+                          {log.mpg && <div className="text-[10px] font-bold text-success mt-1 flex justify-end items-center"><TrendingUp className="w-3 h-3 mr-1" /> {log.mpg} mpg</div>}
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="font-black text-white">${Number(log.total_cost).toFixed(2)}</div>
+                          {log.costPerMile && <div className="text-[10px] text-gray-500 mt-1">${log.costPerMile}/mi</div>}
                         </td>
                         <td className="px-6 py-4 text-center">
                           <div className="flex items-center justify-center space-x-2">
