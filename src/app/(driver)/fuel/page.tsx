@@ -343,18 +343,28 @@ export default function FuelModule() {
   }
 
   // Calculate MPG dynamically based on the list (sorted by odometer descending)
-  // logs[i] is current, logs[i+1] is previous
   const getLogWithMPG = () => {
     return logs.map((log, index) => {
       let mpg = null;
-      if (index < logs.length - 1) {
-        const prevLog = logs[index + 1];
-        const distance = log.odometer - prevLog.odometer;
-        if (distance > 0 && log.gallons > 0) {
-          mpg = (distance / log.gallons).toFixed(2);
+      let distance = null;
+      let costPerMile = null;
+      
+      // Find the next chronologically previous log for the SAME vehicle
+      const prevLogIndex = logs.findIndex((l, i) => i > index && l.vehicle_id === log.vehicle_id);
+      
+      if (prevLogIndex !== -1) {
+        const prevLog = logs[prevLogIndex];
+        distance = log.odometer - prevLog.odometer;
+        if (distance > 0) {
+          if (log.gallons > 0) {
+            mpg = (distance / log.gallons).toFixed(2);
+          }
+          if (log.total_cost > 0) {
+            costPerMile = (log.total_cost / distance).toFixed(3);
+          }
         }
       }
-      return { ...log, mpg };
+      return { ...log, mpg, distance, costPerMile };
     });
   };
 
@@ -404,7 +414,8 @@ export default function FuelModule() {
                         </div>
                         <div className="text-right">
                           <p className="font-bold text-lg">{Number(log.odometer).toLocaleString()} mi</p>
-                          {log.load_id && <span className="text-[10px] uppercase font-bold text-success bg-success/20 px-2 py-0.5 rounded">Active Load</span>}
+                          {log.distance && <p className="text-gray-400 text-sm">{log.distance.toLocaleString()} mi</p>}
+                          {log.load_id && <span className="text-[10px] uppercase font-bold text-success bg-success/20 px-2 py-0.5 rounded mt-1 inline-block">Active Load</span>}
                         </div>
                       </div>
 
@@ -413,10 +424,20 @@ export default function FuelModule() {
                           <Droplet className="w-4 h-4 mr-2 text-purple-400" />
                           <span>{Number(log.gallons).toFixed(3)} gal ({log.fuel_type || 'Diesel'}) &rarr; ${Number(log.price_per_gallon).toFixed(3)}/gal</span>
                         </div>
-                        {log.mpg && (
-                          <div className="flex items-center">
-                            <TrendingUp className="w-4 h-4 mr-2 text-success" />
-                            <span className="text-success font-bold">{log.mpg} mpg</span>
+                        {(log.mpg || log.costPerMile) && (
+                          <div className="flex items-center space-x-4">
+                            {log.mpg && (
+                              <div className="flex items-center">
+                                <TrendingUp className="w-4 h-4 mr-2 text-success" />
+                                <span className="text-success font-bold">{log.mpg} mpg</span>
+                              </div>
+                            )}
+                            {log.costPerMile && (
+                              <div className="flex items-center text-gray-400">
+                                <span className="w-4 h-4 mr-1 text-center font-bold text-xs bg-gray-700 text-white rounded-full flex items-center justify-center">$</span>
+                                <span>${log.costPerMile}/mi</span>
+                              </div>
+                            )}
                           </div>
                         )}
                         <div className="flex items-center text-gray-400">
