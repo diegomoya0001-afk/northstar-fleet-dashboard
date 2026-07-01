@@ -2,12 +2,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Briefcase, Search, Plus, Edit2, Trash2, X, Star, DollarSign, Activity } from 'lucide-react';
+import { Briefcase, Search, Plus, Edit2, Trash2, X, Star, DollarSign, Activity, LayoutGrid, List } from 'lucide-react';
 
 export default function BrokersPage() {
   const [brokers, setBrokers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   
   // Modal State
   const [showModal, setShowModal] = useState(false);
@@ -157,6 +158,14 @@ export default function BrokersPage() {
         </div>
         
         <div className="flex items-center gap-4">
+          <div className="bg-black/40 p-1 rounded-xl border border-white/10 flex items-center">
+            <button onClick={() => setViewMode('grid')} className={`p-2 rounded-lg transition ${viewMode === 'grid' ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'}`} title="Grid View">
+               <LayoutGrid className="w-5 h-5" />
+            </button>
+            <button onClick={() => setViewMode('list')} className={`p-2 rounded-lg transition ${viewMode === 'list' ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'}`} title="List View">
+               <List className="w-5 h-5" />
+            </button>
+          </div>
           <div className="relative">
             <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input 
@@ -187,7 +196,7 @@ export default function BrokersPage() {
              <Briefcase className="w-16 h-16 mb-4 opacity-20" />
              <p className="text-lg">No brokers found.</p>
            </div>
-        ) : (
+        ) : viewMode === 'grid' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
              {filteredBrokers.map(broker => (
                <div key={broker.id} className="bg-[#111] border border-white/10 hover:border-primary/30 transition rounded-2xl p-5 flex flex-col group relative">
@@ -233,6 +242,56 @@ export default function BrokersPage() {
                  </div>
                </div>
              ))}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead className="sticky top-0 bg-[#111] z-10 shadow-md">
+                <tr className="text-xs text-gray-400 uppercase tracking-wider border-b border-white/10">
+                  <th className="px-6 py-4 font-semibold">Broker Name</th>
+                  <th className="px-6 py-4 font-semibold">Contact & Phone</th>
+                  <th className="px-6 py-4 font-semibold text-center">Loads</th>
+                  <th className="px-6 py-4 font-semibold text-center">Avg RPM</th>
+                  <th className="px-6 py-4 font-semibold text-center">Score</th>
+                  <th className="px-6 py-4 font-semibold text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {filteredBrokers.map(broker => (
+                  <tr key={broker.id} className="hover:bg-white/5 transition cursor-pointer group" onClick={() => openModal(broker)}>
+                    <td className="px-6 py-4">
+                      <div className="font-bold text-white">{broker.name}</div>
+                      <div className="text-xs text-gray-500 mt-1">MC: {broker.mc_number || 'N/A'}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="text-sm text-gray-300">{broker.contact_person || '-'}</div>
+                      <div className="text-xs text-gray-500 mt-1">{broker.phone || '-'}</div>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="font-bold">{broker.totalLoads}</div>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="font-bold text-success">${broker.avgRpm.toFixed(2)}</div>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className={`inline-block text-xs font-black border px-2 py-1 rounded-md ${getScoreColor(broker.credit_score || 'A')}`}>
+                        {broker.credit_score || 'A'}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex justify-end gap-2">
+                        <button onClick={(e) => { e.stopPropagation(); openModal(broker); }} className="p-2 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition" title="Edit">
+                           <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); handleDelete(broker.id); }} className="p-2 hover:bg-danger/20 rounded-lg text-danger transition" title="Delete">
+                           <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
