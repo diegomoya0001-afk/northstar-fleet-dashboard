@@ -44,7 +44,7 @@ export default function AdminFuelLogs() {
         driver:users!fuel_logs_driver_id_fkey(first_name, last_name),
         vehicle:vehicles!fuel_logs_vehicle_id_fkey(unit_number)
       `)
-      .order('created_at', { ascending: false });
+      .order('odometer', { ascending: false });
 
     if (!error && data) {
       setLogs(data);
