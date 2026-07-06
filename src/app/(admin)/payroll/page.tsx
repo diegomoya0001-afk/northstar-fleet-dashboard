@@ -15,6 +15,7 @@ export default function PayrollPage() {
   const [dispatcherSettlementsList, setDispatcherSettlementsList] = useState<any[]>([]);
   const [settlements, setSettlements] = useState<any[]>([]);
   const [deductions, setDeductions] = useState<any[]>([]);
+  const [unsettledLoadFinancials, setUnsettledLoadFinancials] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -82,6 +83,12 @@ export default function PayrollPage() {
       .select('*, users(first_name, last_name)')
       .order('created_at', { ascending: false });
     if (dedData) setDeductions(dedData);
+
+    const { data: lfData } = await supabase
+       .from('load_financials')
+       .select('*, loads(*)')
+       .eq('status', 'reconciled');
+    if (lfData) setUnsettledLoadFinancials(lfData);
 
     setLoading(false);
   }
@@ -296,6 +303,30 @@ export default function PayrollPage() {
     return { ...disp, unpaidLoads: loads, totalGross, totalCommission };
   }).filter(stat => stat.unpaidLoads.length > 0);
 
+  // Driver Unpaid Stats
+  const driverUnpaidStats = drivers.map(driver => {
+     const driverLfs = unsettledLoadFinancials.filter(lf => lf.loads?.assigned_driver_id === driver.id);
+     const totalGross = driverLfs.reduce((sum, lf) => sum + (Number(lf.driver_pay) || 0), 0);
+     const activeDriverDeds = deductions.filter(d => d.driver_id === driver.id && d.status === 'active');
+     const totalDeds = activeDriverDeds.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+     const netPayout = totalGross - totalDeds;
+     return { ...driver, pendingLoads: driverLfs.length, totalGross, totalDeds, netPayout: netPayout > 0 ? netPayout : 0 };
+  }).filter(stat => stat.pendingLoads > 0 || stat.totalDeds > 0); // Include if they have deductions even if 0 loads
+
+  // Summary Metrics
+  const totalPendingDriverPayout = driverUnpaidStats.reduce((sum, s) => sum + s.netPayout, 0);
+  const totalPendingDispatchPayout = dispatcherUnpaidStats.reduce((sum, s) => sum + s.totalCommission, 0);
+  
+  const totalUnpaidGross = unsettledLoadFinancials.reduce((sum, lf) => sum + (Number(lf.loads?.rate) || 0), 0);
+  const totalUnpaidOpex = unsettledLoadFinancials.reduce((sum, lf) => 
+     sum + (Number(lf.driver_pay)||0) + (Number(lf.fuel_cost)||0) + (Number(lf.unforeseen_expenses)||0) + (Number(lf.factoring_fee)||0) + (Number(lf.dispatch_fee)||0)
+  , 0);
+  const totalUnpaidNetProfit = totalUnpaidGross - totalUnpaidOpex;
+
+  const totalPaidToDrivers = settlements.filter(s => s.status === 'paid').reduce((sum, s) => sum + Number(s.net_payout), 0);
+  const totalPaidToDispatchers = dispatcherSettlementsList.reduce((sum, s) => sum + Number(s.total_commission), 0);
+  const totalAllTimePaid = totalPaidToDrivers + totalPaidToDispatchers;
+
   const handleExportExcel = () => {
     let dataToExport: any[] = [];
     let fileName = 'payroll_export';
@@ -371,6 +402,26 @@ export default function PayrollPage() {
         </div>
       </header>
 
+      {/* Module Summary Banner */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-2 print:hidden">
+         <div className="bg-[#111] border border-white/10 rounded-2xl p-4 shadow-lg hover:border-white/20 transition">
+            <div className="text-xs text-gray-500 font-bold uppercase mb-1">Pending Driver Payouts</div>
+            <div className="text-2xl font-black text-white">${totalPendingDriverPayout.toLocaleString(undefined, {minimumFractionDigits:2})}</div>
+         </div>
+         <div className="bg-[#111] border border-white/10 rounded-2xl p-4 shadow-lg hover:border-white/20 transition">
+            <div className="text-xs text-gray-500 font-bold uppercase mb-1">Pending Dispatch Comm.</div>
+            <div className="text-2xl font-black text-warning">${totalPendingDispatchPayout.toLocaleString(undefined, {minimumFractionDigits:2})}</div>
+         </div>
+         <div className="bg-success/5 border border-success/20 rounded-2xl p-4 shadow-lg hover:border-success/40 transition">
+            <div className="text-xs text-success font-bold uppercase mb-1">Est. Net Profit (Unpaid Loads)</div>
+            <div className="text-2xl font-black text-success">${totalUnpaidNetProfit.toLocaleString(undefined, {minimumFractionDigits:2})}</div>
+         </div>
+         <div className="bg-[#111] border border-white/10 rounded-2xl p-4 shadow-lg hover:border-white/20 transition">
+            <div className="text-xs text-gray-500 font-bold uppercase mb-1">Total Paid (All Time)</div>
+            <div className="text-2xl font-black text-white">${totalAllTimePaid.toLocaleString(undefined, {minimumFractionDigits:2})}</div>
+         </div>
+      </div>
+
       {/* Tabs */}
       <div className="flex border-b border-white/10 mb-2 print:hidden">
         <button 
@@ -406,20 +457,38 @@ export default function PayrollPage() {
             <p className="text-sm text-gray-500 mb-6">Select a driver to generate their settlement for the current period. Deductions will be applied automatically.</p>
 
             <div className="flex-1 overflow-y-auto space-y-3 pr-2 hide-scrollbar">
-               {drivers.filter(d => `${d.first_name} ${d.last_name}`.toLowerCase().includes(searchTerm.toLowerCase())).map(driver => (
-                  <div key={driver.id} className="bg-black/40 border border-white/5 rounded-xl p-4 hover:bg-white/5 transition flex flex-col">
-                     <div className="flex justify-between items-center mb-3">
-                        <div className="font-bold">{driver.first_name} {driver.last_name}</div>
-                        <span className="text-[10px] font-bold uppercase bg-white/10 px-2 py-0.5 rounded tracking-wider text-gray-300">W2</span>
+               {driverUnpaidStats.filter(d => `${d.first_name} ${d.last_name}`.toLowerCase().includes(searchTerm.toLowerCase())).map(stat => (
+                  <div key={stat.id} className="bg-[#111] border border-white/10 rounded-xl p-4 hover:border-success/30 transition flex flex-col">
+                     <div className="flex justify-between items-start mb-3 border-b border-white/10 pb-3">
+                        <div>
+                           <div className="font-bold">{stat.first_name} {stat.last_name}</div>
+                           <span className="text-[10px] font-bold uppercase bg-white/10 px-2 py-0.5 rounded tracking-wider text-gray-300">W2</span>
+                        </div>
+                        <div className="text-right">
+                           <div className="text-lg font-black text-success">${stat.netPayout.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                           <div className="text-xs text-gray-500">{stat.pendingLoads} Loads</div>
+                        </div>
                      </div>
+                     
+                     <div className="flex justify-between items-center mb-3">
+                        <div className="text-xs text-gray-400">Gross: <span className="text-white">${stat.totalGross.toLocaleString(undefined, {minimumFractionDigits: 2})}</span></div>
+                        <div className="text-xs text-gray-400">Deds: <span className="text-danger">-${stat.totalDeds.toLocaleString(undefined, {minimumFractionDigits: 2})}</span></div>
+                     </div>
+
                      <button 
-                        onClick={() => handleGenerateSettlement(driver.id)}
-                        className="w-full py-2 bg-success/10 hover:bg-success/20 text-success border border-success/20 rounded-lg text-sm font-bold transition"
+                        onClick={() => handleGenerateSettlement(stat.id)}
+                        disabled={stat.pendingLoads === 0}
+                        className="w-full py-2 bg-success/20 hover:bg-success text-success hover:text-white font-bold rounded-lg transition text-sm flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                      >
+                        <CheckCircle className="w-4 h-4 mr-2" />
                         Generate Settlement
                      </button>
                   </div>
                ))}
+               
+               {driverUnpaidStats.length === 0 && (
+                  <div className="text-center text-gray-500 mt-10">No pending loads for drivers.</div>
+               )}
             </div>
          </div>
 
