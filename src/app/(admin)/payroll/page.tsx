@@ -317,12 +317,6 @@ export default function PayrollPage() {
   const totalPendingDriverPayout = driverUnpaidStats.reduce((sum, s) => sum + s.netPayout, 0);
   const totalPendingDispatchPayout = dispatcherUnpaidStats.reduce((sum, s) => sum + s.totalCommission, 0);
   
-  const totalUnpaidGross = unsettledLoadFinancials.reduce((sum, lf) => sum + (Number(lf.loads?.rate) || 0), 0);
-  const totalUnpaidOpex = unsettledLoadFinancials.reduce((sum, lf) => 
-     sum + (Number(lf.driver_pay)||0) + (Number(lf.fuel_cost)||0) + (Number(lf.unforeseen_expenses)||0) + (Number(lf.factoring_fee)||0) + (Number(lf.dispatch_fee)||0)
-  , 0);
-  const totalUnpaidNetProfit = totalUnpaidGross - totalUnpaidOpex;
-
   const totalPaidToDrivers = settlements.filter(s => s.status === 'paid').reduce((sum, s) => sum + Number(s.net_payout), 0);
   const totalPaidToDispatchers = dispatcherSettlementsList.reduce((sum, s) => sum + Number(s.total_commission), 0);
   const totalAllTimePaid = totalPaidToDrivers + totalPaidToDispatchers;
@@ -403,7 +397,7 @@ export default function PayrollPage() {
       </header>
 
       {/* Module Summary Banner */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-2 print:hidden">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2 print:hidden">
          <div className="bg-[#111] border border-white/10 rounded-2xl p-4 shadow-lg hover:border-white/20 transition">
             <div className="text-xs text-gray-500 font-bold uppercase mb-1">Pending Driver Payouts</div>
             <div className="text-2xl font-black text-white">${totalPendingDriverPayout.toLocaleString(undefined, {minimumFractionDigits:2})}</div>
@@ -411,10 +405,6 @@ export default function PayrollPage() {
          <div className="bg-[#111] border border-white/10 rounded-2xl p-4 shadow-lg hover:border-white/20 transition">
             <div className="text-xs text-gray-500 font-bold uppercase mb-1">Pending Dispatch Comm.</div>
             <div className="text-2xl font-black text-warning">${totalPendingDispatchPayout.toLocaleString(undefined, {minimumFractionDigits:2})}</div>
-         </div>
-         <div className="bg-success/5 border border-success/20 rounded-2xl p-4 shadow-lg hover:border-success/40 transition">
-            <div className="text-xs text-success font-bold uppercase mb-1">Est. Net Profit (Unpaid Loads)</div>
-            <div className="text-2xl font-black text-success">${totalUnpaidNetProfit.toLocaleString(undefined, {minimumFractionDigits:2})}</div>
          </div>
          <div className="bg-[#111] border border-white/10 rounded-2xl p-4 shadow-lg hover:border-white/20 transition">
             <div className="text-xs text-gray-500 font-bold uppercase mb-1">Total Paid (All Time)</div>
