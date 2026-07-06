@@ -138,6 +138,8 @@ export default function FinancialsPage() {
 
     const totalLoadOpex = dispatchFee + driverPay + driverTaxes + factoringFee + loadFuel + additionalExpenses;
     const loadGrossMargin = rate - totalLoadOpex;
+    const maintenanceReserve = rate * 0.05;
+    const netProfit = loadGrossMargin - maintenanceReserve;
 
     totalGross += rate;
     totalDispatch += dispatchFee;
@@ -149,7 +151,7 @@ export default function FinancialsPage() {
 
     return {
       ...load,
-      profitability: { rate, dispatchFee, driverPay, driverTaxes, factoringFee, loadFuel, additionalExpenses, totalLoadOpex, loadGrossMargin }
+      profitability: { rate, dispatchFee, driverPay, driverTaxes, factoringFee, loadFuel, additionalExpenses, totalLoadOpex, loadGrossMargin, maintenanceReserve, netProfit }
     };
   });
 
@@ -704,34 +706,34 @@ export default function FinancialsPage() {
                          </div>
                        </div>
                        
-                       <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 text-sm">
-                          <div>
-                             <div className="text-xs text-gray-500 mb-1">Payroll + Taxes</div>
+                       <div className="grid grid-cols-2 sm:grid-cols-6 gap-4 text-sm mt-4">
+                          <div className="col-span-1">
+                             <div className="text-[11px] text-gray-500 mb-1 uppercase font-bold">Payroll+Taxes</div>
                              <div className="font-mono text-warning font-semibold">
                                -${(load.profitability.driverPay + load.profitability.driverTaxes).toFixed(2)}
                              </div>
                           </div>
-                          <div>
-                             <div className="text-xs text-gray-500 mb-1">Fuel Costs</div>
+                          <div className="col-span-1">
+                             <div className="text-[11px] text-gray-500 mb-1 uppercase font-bold">Fuel Costs</div>
                              <div className="font-mono text-warning font-semibold">
                                -${load.profitability.loadFuel.toFixed(2)}
                              </div>
                           </div>
-                          <div>
-                             <div className="text-xs text-gray-500 mb-1">Unforeseen/Tolls</div>
-                             <div className="font-mono text-warning font-semibold">
-                               -${load.profitability.additionalExpenses.toFixed(2)}
-                             </div>
-                          </div>
-                          <div>
-                             <div className="text-xs text-gray-500 mb-1">Factoring/Disp</div>
+                          <div className="col-span-1">
+                             <div className="text-[11px] text-gray-500 mb-1 uppercase font-bold">Factor/Disp</div>
                              <div className="font-mono text-warning font-semibold">
                                -${(load.profitability.factoringFee + load.profitability.dispatchFee).toFixed(2)}
                              </div>
                           </div>
-                          <div className="bg-success/10 rounded-lg p-2 border border-success/20 text-center flex flex-col justify-center col-span-4 sm:col-span-1 mt-2 sm:mt-0">
-                             <div className="text-[10px] text-success uppercase font-bold mb-0.5">Gross Margin</div>
-                             <div className="font-black text-success text-base">${load.profitability.loadGrossMargin.toFixed(2)}</div>
+                          <div className="col-span-1">
+                             <div className="text-[11px] text-gray-500 mb-1 uppercase font-bold">Maint. Rsv</div>
+                             <div className="font-mono text-warning font-semibold">
+                               -${load.profitability.maintenanceReserve.toFixed(2)}
+                             </div>
+                          </div>
+                          <div className="bg-success/10 rounded-xl p-3 border border-success/20 text-center flex flex-col justify-center col-span-2 shadow-[0_0_15px_rgba(34,197,94,0.15)]">
+                             <div className="text-[10px] text-success uppercase font-black tracking-widest mb-0.5">Net Profit</div>
+                             <div className="font-black text-success text-xl">${load.profitability.netProfit.toFixed(2)}</div>
                           </div>
                        </div>
                     </div>
