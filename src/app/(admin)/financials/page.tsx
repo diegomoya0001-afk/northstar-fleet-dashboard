@@ -157,6 +157,7 @@ export default function FinancialsPage() {
 
   const totalLoadOpex = totalDispatch + totalFactoring + totalDriverPay + totalEmployerTaxes + totalFuel; 
   const grossMargin = totalGross - totalLoadOpex;
+  const totalNetProfit = loadsWithProfitability.reduce((sum, load) => sum + load.profitability.netProfit, 0);
 
   // Repairs
   const totalRepairs = filteredShopVisits.reduce((sum, sv) => sum + Number(sv.total_cost || 0), 0);
@@ -676,7 +677,12 @@ export default function FinancialsPage() {
           <div className="glass-panel p-6 h-full flex flex-col">
             <h2 className="text-xl font-bold mb-6 flex items-center justify-between">
               <span className="flex items-center"><Activity className="w-5 h-5 mr-2 text-success"/> Load Reconciliation</span>
-              <span className="text-sm font-normal text-gray-400 bg-white/5 px-3 py-1 rounded-full">{filteredLoads.length} Loads</span>
+              <div className="flex items-center gap-3">
+                 <span className="text-sm font-black text-success bg-success/10 px-4 py-1.5 rounded-full border border-success/20">
+                    Total Net: ${totalNetProfit.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                 </span>
+                 <span className="text-sm font-normal text-gray-400 bg-white/5 px-3 py-1.5 rounded-full">{filteredLoads.length} Loads</span>
+              </div>
             </h2>
             
             <div className="flex-1 overflow-auto hide-scrollbar pr-2">
