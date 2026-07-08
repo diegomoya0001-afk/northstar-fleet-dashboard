@@ -55,13 +55,17 @@ export async function POST(request: Request) {
                 parts: [
                   { text: `Extract the following details from this Rate Confirmation document and return ONLY a raw JSON object.
                     Do not include markdown blocks like \`\`\`json.
+                    You are an expert logistics data extractor. Rate Confirmations can be messy. Look carefully for all Stops, Origins, Destinations, Pickups, and Drops.
                     Fields needed:
                     - "loadNumber": The load number or reference number (e.g. "25AF801").
-                    - "brokerName": The name of the broker or company (e.g. "COUGAR EXPRESS / Arafet Freight").
+                    - "brokerName": The name of the broker or company (e.g. "COUGAR EXPRESS").
                     - "brokerMC": The broker's MC number (e.g. "248449").
                     - "rate": The gross rate or shipment pay, just the number as a string without symbols (e.g. "2800.00").
-                    - "stops": An array of all stops (pickups and deliveries) in chronological order. Each stop must be an object with:
-                        - "type": either "pickup" or "delivery".
+                    - "stops": CRITICAL: An array of ALL stops (pickups and deliveries) in chronological order. 
+                        Read the entire document. Do not miss any stops.
+                        Identify if a stop is a Pickup (Origin, Shipper) or Delivery (Drop, Destination, Consignee).
+                        Each stop must be an object with:
+                        - "type": EXACTLY either "pickup" or "delivery".
                         - "location": City and State (e.g. "Norristown, PA").
                         - "address": The exact street address including Zip Code.
                         - "date": The date formatted as YYYY-MM-DD.
