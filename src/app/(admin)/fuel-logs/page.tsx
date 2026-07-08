@@ -27,6 +27,8 @@ export default function AdminFuelLogs() {
   const [editTotal, setEditTotal] = useState('');
   const [editState, setEditState] = useState('');
   const [editFuelType, setEditFuelType] = useState('');
+  const [editLoadId, setEditLoadId] = useState('');
+  const [activeLoads, setActiveLoads] = useState<any[]>([]);
 
   // IFTA Filter States
   const [iftaYear, setIftaYear] = useState(new Date().getFullYear().toString());
@@ -34,7 +36,13 @@ export default function AdminFuelLogs() {
 
   useEffect(() => {
     fetchLogs();
+    fetchActiveLoads();
   }, []);
+
+  async function fetchActiveLoads() {
+    const { data } = await supabase.from('loads').select('id, load_number, status').order('created_at', { ascending: false }).limit(200);
+    if (data) setActiveLoads(data);
+  }
 
   async function fetchLogs() {
     setLoading(true);
@@ -71,6 +79,7 @@ export default function AdminFuelLogs() {
     setEditTotal(log.total_cost?.toString() || '');
     setEditState(log.state || 'TX');
     setEditFuelType(log.fuel_type || 'Diesel');
+    setEditLoadId(log.load_id || '');
   }
 
   async function handleUpdateLog() {
@@ -82,7 +91,8 @@ export default function AdminFuelLogs() {
       price_per_gallon: parseFloat(editPrice || "0"),
       total_cost: parseFloat(editTotal),
       state: editState,
-      fuel_type: editFuelType
+      fuel_type: editFuelType,
+      load_id: editLoadId || null
     }).eq('id', editingLog.id);
 
     if (!error) {
@@ -283,6 +293,9 @@ export default function AdminFuelLogs() {
                             <Truck className="w-4 h-4 mr-2 text-primary" />
                             {truck}
                           </div>
+                          {log.load_id && (
+                             <div className="text-xs text-primary mt-1 font-bold">Assigned Load</div>
+                          )}
                           <div className="text-xs text-gray-500 mt-1">Odo: {Number(log.odometer).toLocaleString()} mi</div>
                           {log.distance && <div className="text-[10px] text-gray-400 mt-0.5">Dist: {log.distance.toLocaleString()} mi</div>}
                         </td>
@@ -406,10 +419,21 @@ export default function AdminFuelLogs() {
                         </select>
                      </div>
                   </div>
-                  <div>
-                    <label className="text-xs text-gray-400 font-bold block mb-1">Odometer</label>
-                    <input type="text" inputMode="numeric" value={editOdometer ? Number(editOdometer).toLocaleString() : ''} onChange={e => setEditOdometer(e.target.value.replace(/\D/g, ''))} className="w-full bg-[#000] border border-white/10 rounded-xl p-3 text-white outline-none focus:border-primary" />
-                 </div>
+                  <div className="grid grid-cols-2 gap-4">
+                     <div>
+                       <label className="text-xs text-gray-400 font-bold block mb-1">Odometer</label>
+                       <input type="text" inputMode="numeric" value={editOdometer ? Number(editOdometer).toLocaleString() : ''} onChange={e => setEditOdometer(e.target.value.replace(/\D/g, ''))} className="w-full bg-[#000] border border-white/10 rounded-xl p-3 text-white outline-none focus:border-primary" />
+                     </div>
+                     <div>
+                       <label className="text-xs text-primary font-bold block mb-1">Assigned Load</label>
+                       <select value={editLoadId} onChange={e => setEditLoadId(e.target.value)} className="w-full bg-[#000] border border-primary/30 rounded-xl p-3 text-white outline-none focus:border-primary">
+                         <option value="">-- Unassigned --</option>
+                         {activeLoads.map(l => (
+                           <option key={l.id} value={l.id}>Load #{l.load_number} ({l.status})</option>
+                         ))}
+                       </select>
+                     </div>
+                  </div>
                  <div className="grid grid-cols-2 gap-4">
                     <div>
                        <label className="text-xs text-gray-400 font-bold block mb-1">Gallons</label>
