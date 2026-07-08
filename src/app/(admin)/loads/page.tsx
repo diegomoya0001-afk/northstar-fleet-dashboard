@@ -29,12 +29,6 @@ export default function LoadsPage() {
   const [formBroker, setFormBroker] = useState('');
   const [formBrokerMC, setFormBrokerMC] = useState('');
   const [formRate, setFormRate] = useState('');
-  const [formPickup, setFormPickup] = useState('');
-  const [formPickupAddress, setFormPickupAddress] = useState('');
-  const [formPickupDate, setFormPickupDate] = useState('');
-  const [formDelivery, setFormDelivery] = useState('');
-  const [formDeliveryAddress, setFormDeliveryAddress] = useState('');
-  const [formDeliveryDate, setFormDeliveryDate] = useState('');
   const [formWeight, setFormWeight] = useState('');
   const [formLoadedMiles, setFormLoadedMiles] = useState('');
   const [formDeadheadMiles, setFormDeadheadMiles] = useState('');
@@ -43,7 +37,10 @@ export default function LoadsPage() {
   const [formDispatcherId, setFormDispatcherId] = useState('');
   const [formNotes, setFormNotes] = useState('');
   const [formAdditionalExpenses, setFormAdditionalExpenses] = useState('');
-  const [formStops, setFormStops] = useState<any[]>([]);
+  const [formStops, setFormStops] = useState<any[]>([
+     { type: 'pickup', location: '', address: '', date: '' },
+     { type: 'delivery', location: '', address: '', date: '' }
+  ]);
 
   // AI Parsing State
   const [isParsing, setIsParsing] = useState(false);
@@ -137,11 +134,12 @@ export default function LoadsPage() {
 
   function resetForm() {
     setFormLoadNumber(''); setFormBrokerId(''); setFormBroker(''); setFormBrokerMC(''); setFormRate(''); 
-    setFormPickup(''); setFormPickupAddress(''); setFormPickupDate('');
-    setFormDelivery(''); setFormDeliveryAddress(''); setFormDeliveryDate(''); 
     setFormWeight(''); setFormLoadedMiles(''); setFormDeadheadMiles('');
     setFormStatus('available'); setFormDriverId(''); setFormDispatcherId(''); setFormNotes(''); setFormAdditionalExpenses('');
-    setFormStops([]);
+    setFormStops([
+       { type: 'pickup', location: '', address: '', date: '' },
+       { type: 'delivery', location: '', address: '', date: '' }
+    ]);
   }
 
   // --- MAGIC OCR UPLOAD ---
@@ -165,12 +163,16 @@ export default function LoadsPage() {
         setFormBroker(data.data.brokerName || '');
         setFormBrokerMC(data.data.brokerMC || '');
         setFormRate(data.data.rate || '');
-        setFormPickup(data.data.pickupLocation || '');
-        setFormPickupAddress(data.data.pickupAddress || '');
-        setFormPickupDate(data.data.pickupDate || '');
-        setFormDelivery(data.data.deliveryLocation || '');
-        setFormDeliveryAddress(data.data.deliveryAddress || '');
-        setFormDeliveryDate(data.data.deliveryDate || '');
+        
+        if (data.data.stops && data.data.stops.length > 0) {
+           setFormStops(data.data.stops);
+        } else {
+           setFormStops([
+              { type: 'pickup', location: data.data.pickupLocation || '', address: data.data.pickupAddress || '', date: data.data.pickupDate || '' },
+              { type: 'delivery', location: data.data.deliveryLocation || '', address: data.data.deliveryAddress || '', date: data.data.deliveryDate || '' }
+           ]);
+        }
+
         setFormWeight(data.data.weight || '');
         
         let milesStr = data.data.loadedMiles || '';
@@ -180,7 +182,6 @@ export default function LoadsPage() {
         }
         setFormLoadedMiles(milesStr);
         setFormNotes(data.data.notes || '');
-        setFormStops(data.data.stops || []);
         // We can automatically upload this document to the vault after the load is created.
         alert("Rate Confirmation successfully read! Please verify the details before saving.");
       } else {
@@ -214,8 +215,11 @@ export default function LoadsPage() {
   }
 
   async function handleManualCalculateMiles() {
-    const origin = formPickupAddress || formPickup;
-    const dest = formDeliveryAddress || formDelivery;
+    const originStop = formStops.find(s => s.type === 'pickup');
+    const destStop = [...formStops].reverse().find(s => s.type === 'delivery');
+    const origin = originStop?.address || originStop?.location;
+    const dest = destStop?.address || destStop?.location;
+    
     if (!origin || !dest) {
       alert("Please enter at least the pickup and delivery cities/addresses to calculate miles.");
       return;
@@ -233,7 +237,8 @@ export default function LoadsPage() {
        alert("Please select a driver first to calculate deadhead miles based on their truck's location.");
        return;
     }
-    const dest = formPickupAddress || formPickup;
+    const originStop = formStops.find(s => s.type === 'pickup');
+    const dest = originStop?.address || originStop?.location;
     if (!dest) {
        alert("Please enter a pickup location/address first.");
        return;
@@ -294,18 +299,26 @@ export default function LoadsPage() {
        }
     }
 
+    const originStop = formStops.find(s => s.type === 'pickup') || formStops[0];
+    const destStop = [...formStops].reverse().find(s => s.type === 'delivery') || formStops[formStops.length - 1];
+
+    if (!originStop?.location || !destStop?.location) {
+       alert("Please enter at least one pickup and one delivery location in the stops list.");
+       return;
+    }
+
     const newLoad = {
       load_number: formLoadNumber,
       broker_id: finalBrokerId || null,
       broker_name: formBroker,
       broker_mc: formBrokerMC,
       rate: parseFloat(formRate),
-      pickup_location: formPickup,
-      pickup_address: formPickupAddress,
-      pickup_date: formPickupDate || null,
-      delivery_location: formDelivery,
-      delivery_address: formDeliveryAddress,
-      delivery_date: formDeliveryDate || null,
+      pickup_location: originStop.location,
+      pickup_address: originStop.address || '',
+      pickup_date: originStop.date || null,
+      delivery_location: destStop.location,
+      delivery_address: destStop.address || '',
+      delivery_date: destStop.date || null,
       weight: formWeight ? parseFloat(formWeight) : null,
       loaded_miles: formLoadedMiles ? parseFloat(formLoadedMiles) : null,
       deadhead_miles: formDeadheadMiles ? parseFloat(formDeadheadMiles) : 0,
@@ -1031,72 +1044,90 @@ export default function LoadsPage() {
                  </div>
                </div>
 
-               <div>
-                 <label className="text-xs text-gray-400 block mb-1">Pickup Location (City, State) *</label>
-                 <input type="text" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-primary" placeholder="City, State" value={formPickup} onChange={e => setFormPickup(e.target.value)} />
-               </div>
-               <div>
-                 <label className="text-xs text-gray-400 block mb-1">Pickup Date</label>
-                 <input type="date" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-primary" value={formPickupDate} onChange={e => setFormPickupDate(e.target.value)} />
-               </div>
-               <div className="col-span-2">
-                 <label className="text-xs text-gray-400 block mb-1">Exact Pickup Address</label>
-                 <input type="text" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-primary" placeholder="123 Main St, City, ST 12345" value={formPickupAddress} onChange={e => setFormPickupAddress(e.target.value)} />
-               </div>
-
-               <div>
-                 <label className="text-xs text-gray-400 block mb-1">Delivery Location (City, State) *</label>
-                 <input type="text" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-primary" placeholder="City, State" value={formDelivery} onChange={e => setFormDelivery(e.target.value)} />
-               </div>
-               <div>
-                 <label className="text-xs text-gray-400 block mb-1">Delivery Date</label>
-                 <input type="date" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-primary" value={formDeliveryDate} onChange={e => setFormDeliveryDate(e.target.value)} />
-               </div>
-               <div className="col-span-2">
-                 <label className="text-xs text-gray-400 block mb-1">Exact Delivery Address</label>
-                 <input type="text" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-primary" placeholder="456 Target Blvd, City, ST 54321" value={formDeliveryAddress} onChange={e => setFormDeliveryAddress(e.target.value)} />
-               </div>
-
-               <div>
-                 <label className="text-xs text-gray-400 block mb-1">Weight (Lbs)</label>
-                 <input type="number" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-primary" placeholder="40000" value={formWeight} onChange={e => setFormWeight(e.target.value)} />
-               </div>
-               <div>
-                 <div className="flex justify-between items-center mb-1">
-                   <label className="text-xs text-gray-400 block">Loaded Miles</label>
-                   <button onClick={handleManualCalculateMiles} type="button" className="text-xs text-primary hover:text-white transition font-bold">Auto Calculate</button>
+               <div className="col-span-2 mt-2">
+                 <div className="flex justify-between items-center mb-3 border-b border-white/10 pb-2">
+                   <label className="text-xs text-primary font-bold uppercase tracking-wider">Stops / Routing *</label>
+                   <button type="button" onClick={() => setFormStops([...formStops, { type: 'delivery', location: '', address: '', date: '' }])} className="text-xs bg-primary/20 text-primary px-3 py-1.5 rounded-lg hover:bg-primary/30 transition font-bold">+ Add Stop</button>
                  </div>
-                 <input type="number" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-primary" placeholder="1500" value={formLoadedMiles} onChange={e => setFormLoadedMiles(e.target.value)} />
-               </div>
-               <div>
-                 <div className="flex justify-between items-center mb-1">
-                   <label className="text-xs text-warning block">Deadhead Miles</label>
-                   <button onClick={handleCalculateDeadheadMiles} type="button" className="text-xs text-warning hover:text-white transition font-bold">Calculate (GPS)</button>
+                 <div className="space-y-4">
+                   {formStops.map((stop, idx) => (
+                      <div key={idx} className="bg-black/40 border border-white/10 p-4 rounded-xl relative group">
+                         {formStops.length > 2 && (
+                           <button type="button" onClick={() => {
+                              const newStops = [...formStops];
+                              newStops.splice(idx, 1);
+                              setFormStops(newStops);
+                           }} className="absolute top-2 right-2 text-gray-500 hover:text-red-500 transition opacity-0 group-hover:opacity-100 p-1 bg-red-500/10 rounded">
+                              <X className="w-4 h-4"/>
+                           </button>
+                         )}
+                         
+                         <div className="flex flex-col sm:flex-row gap-4 items-start mb-3">
+                            <div className="w-full sm:w-32 shrink-0">
+                               <label className="text-[10px] text-gray-500 uppercase font-bold mb-1 block">Stop Type</label>
+                               <select 
+                                  value={stop.type} 
+                                  onChange={e => {
+                                     const newStops = [...formStops];
+                                     newStops[idx].type = e.target.value;
+                                     setFormStops(newStops);
+                                  }}
+                                  className={`w-full text-xs font-bold uppercase rounded-lg p-3 outline-none appearance-none cursor-pointer ${stop.type === 'pickup' ? 'bg-blue-500/10 text-blue-400 border-blue-500/30' : 'bg-warning/10 text-warning border-warning/30'} border`}
+                               >
+                                  <option value="pickup" className="bg-[#111]">Pickup</option>
+                                  <option value="delivery" className="bg-[#111]">Delivery</option>
+                               </select>
+                            </div>
+                            <div className="flex-1 w-full">
+                               <label className="text-[10px] text-gray-500 uppercase font-bold mb-1 block">City, State *</label>
+                               <input type="text" placeholder="e.g. Houston, TX" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-sm text-white focus:border-primary" value={stop.location} onChange={e => {
+                                  const newStops = [...formStops];
+                                  newStops[idx].location = e.target.value;
+                                  setFormStops(newStops);
+                               }} />
+                            </div>
+                            <div className="w-full sm:w-40 shrink-0">
+                               <label className="text-[10px] text-gray-500 uppercase font-bold mb-1 block">Date</label>
+                               <input type="date" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-sm text-white focus:border-primary" value={stop.date} onChange={e => {
+                                  const newStops = [...formStops];
+                                  newStops[idx].date = e.target.value;
+                                  setFormStops(newStops);
+                               }} />
+                            </div>
+                         </div>
+                         <div>
+                            <input type="text" placeholder="Exact Address (Optional) e.g. 123 Main St, Houston, TX 77001" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-sm text-gray-300 focus:border-primary" value={stop.address} onChange={e => {
+                               const newStops = [...formStops];
+                               newStops[idx].address = e.target.value;
+                               setFormStops(newStops);
+                            }} />
+                         </div>
+                         
+                         {/* Ordering controls */}
+                         <div className="flex justify-end gap-3 mt-3 pt-3 border-t border-white/5">
+                            {idx > 0 && (
+                               <button type="button" onClick={() => {
+                                  const newStops = [...formStops];
+                                  const temp = newStops[idx];
+                                  newStops[idx] = newStops[idx - 1];
+                                  newStops[idx - 1] = temp;
+                                  setFormStops(newStops);
+                               }} className="text-xs text-gray-400 hover:text-white transition flex items-center bg-white/5 px-2 py-1 rounded">↑ Move Up</button>
+                            )}
+                            {idx < formStops.length - 1 && (
+                               <button type="button" onClick={() => {
+                                  const newStops = [...formStops];
+                                  const temp = newStops[idx];
+                                  newStops[idx] = newStops[idx + 1];
+                                  newStops[idx + 1] = temp;
+                                  setFormStops(newStops);
+                               }} className="text-xs text-gray-400 hover:text-white transition flex items-center bg-white/5 px-2 py-1 rounded">↓ Move Down</button>
+                            )}
+                         </div>
+                      </div>
+                   ))}
                  </div>
-                 <input type="number" className="w-full bg-warning/5 border border-warning/20 rounded-lg p-3 text-warning font-bold focus:border-warning" placeholder="0" value={formDeadheadMiles} onChange={e => setFormDeadheadMiles(e.target.value)} />
                </div>
-
-               {formStops && formStops.length > 0 && (
-                 <div className="col-span-2 border border-primary/20 bg-primary/5 p-4 rounded-xl">
-                   <h3 className="text-sm font-bold text-primary mb-3 flex items-center">
-                     <MapPin className="w-4 h-4 mr-2" />
-                     Extracted Multiple Stops ({formStops.length})
-                   </h3>
-                   <div className="space-y-3">
-                     {formStops.map((stop, idx) => (
-                       <div key={idx} className="flex justify-between items-center bg-black/40 p-3 rounded-lg text-sm border border-white/5">
-                          <div>
-                             <span className={`font-bold mr-2 uppercase text-xs ${stop.type === 'pickup' ? 'text-primary' : 'text-warning'}`}>{stop.type}</span>
-                             <span className="font-semibold">{stop.location}</span>
-                          </div>
-                          <div className="text-gray-400 text-xs">
-                             {stop.date || 'TBD'}
-                          </div>
-                       </div>
-                     ))}
-                   </div>
-                 </div>
-               )}
 
                <div className="col-span-1">
                   <label className="text-xs text-primary font-bold block mb-1">Assign to Dispatcher</label>
