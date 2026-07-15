@@ -38,6 +38,14 @@ export default function PayrollPage() {
   const [viewingPaystub, setViewingPaystub] = useState<any | null>(null);
   const [paystubLoads, setPaystubLoads] = useState<any[]>([]);
 
+  // Dispatcher Paystub UI
+  const [viewingDispatcherPaystub, setViewingDispatcherPaystub] = useState<any | null>(null);
+  const [dispatcherPaystubLoads, setDispatcherPaystubLoads] = useState<any[]>([]);
+
+  // Driver Settlement Selection UI
+  const [driverSettlementModal, setDriverSettlementModal] = useState<any | null>(null);
+  const [selectedDriverLfIds, setSelectedDriverLfIds] = useState<string[]>([]);
+
   // Dispatcher Settlement Selection UI
   const [dispatcherSettlementModal, setDispatcherSettlementModal] = useState<any | null>(null);
   const [selectedDispatcherLoadIds, setSelectedDispatcherLoadIds] = useState<string[]>([]);
@@ -97,24 +105,33 @@ export default function PayrollPage() {
     setLoading(false);
   }
 
-  const handleGenerateSettlement = async (driverId: string) => {
+  const handleOpenDriverModal = async (stat: any) => {
     // 1. Fetch un-settled load_financials
     const { data: lfData, error: lfError } = await supabase
        .from('load_financials')
        .select('*, loads!inner(*)')
        .eq('status', 'reconciled')
-       .eq('loads.assigned_driver_id', driverId);
+       .eq('loads.assigned_driver_id', stat.id);
 
     if (lfError || !lfData || lfData.length === 0) {
        alert("No newly reconciled loads found for this driver to generate a settlement.");
        return;
     }
+    
+    setDriverSettlementModal({ ...stat, loadFinancials: lfData });
+    setSelectedDriverLfIds(lfData.map((lf: any) => lf.id));
+  };
+
+  const handleConfirmDriverSettlement = async () => {
+    if (!driverSettlementModal || selectedDriverLfIds.length === 0) return;
+
+    const selectedLfs = driverSettlementModal.loadFinancials.filter((lf: any) => selectedDriverLfIds.includes(lf.id));
 
     // 2. Fetch Active Deductions
     const { data: activeDeds } = await supabase
        .from('driver_deductions')
        .select('*')
-       .eq('driver_id', driverId)
+       .eq('driver_id', driverSettlementModal.id)
        .eq('status', 'active');
 
     const totalDeds = activeDeds ? activeDeds.reduce((acc, d) => acc + Number(d.amount), 0) : 0;
@@ -123,13 +140,13 @@ export default function PayrollPage() {
     const periodEnd = now.toISOString().split('T')[0];
     const periodStart = new Date(now.setDate(now.getDate() - 7)).toISOString().split('T')[0];
     
-    const grossPay = lfData.reduce((acc, row) => acc + Number(row.driver_pay || 0), 0);
-    const taxes = grossPay * 0.0765; // Employer W2 Tax (Sure Payroll handles remitting, but we record cost)
+    const grossPay = selectedLfs.reduce((acc: number, row: any) => acc + Number(row.driver_pay || 0), 0);
+    const taxes = grossPay * 0.0765; // Employer W2 Tax
     const netPayout = grossPay - totalDeds;
 
     // 3. Create Settlement
     const { data, error } = await supabase.from('driver_settlements').insert([{
-      driver_id: driverId,
+      driver_id: driverSettlementModal.id,
       period_start: periodStart,
       period_end: periodEnd,
       total_gross_pay: grossPay,
@@ -145,8 +162,7 @@ export default function PayrollPage() {
       const settlementId = data[0].id;
       
       // Update loads to link them
-      const idsToUpdate = lfData.map(l => l.id);
-      await supabase.from('load_financials').update({ status: 'settled', settlement_id: settlementId }).in('id', idsToUpdate);
+      await supabase.from('load_financials').update({ status: 'settled', settlement_id: settlementId }).in('id', selectedDriverLfIds);
 
       // Mark one-time deductions as applied
       if (activeDeds) {
@@ -157,6 +173,7 @@ export default function PayrollPage() {
       }
 
       setSettlements(prev => [data[0], ...prev]);
+      setDriverSettlementModal(null);
       alert("Settlement successfully generated!");
       fetchData();
     }
@@ -232,6 +249,13 @@ export default function PayrollPage() {
     const { data } = await supabase.from('load_financials').select('*, loads(*)').eq('settlement_id', settlement.id);
     if (data) setPaystubLoads(data);
     setViewingPaystub(settlement);
+  };
+
+  const viewDispatcherPaystub = async (settlement: any) => {
+    // Fetch loads for this dispatcher settlement
+    const { data } = await supabase.from('loads').select('*').eq('dispatcher_settlement_id', settlement.id);
+    if (data) setDispatcherPaystubLoads(data);
+    setViewingDispatcherPaystub(settlement);
   };
 
   const markAsPaid = async (id: string) => {
@@ -484,7 +508,7 @@ export default function PayrollPage() {
                      </div>
 
                      <button 
-                        onClick={() => handleGenerateSettlement(stat.id)}
+                        onClick={() => handleOpenDriverModal(stat)}
                         disabled={stat.pendingLoads === 0}
                         className="w-full py-2 bg-success/20 hover:bg-success text-success hover:text-white font-bold rounded-lg transition text-sm flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                      >
@@ -616,6 +640,11 @@ export default function PayrollPage() {
                                   <div className="text-xs text-success uppercase font-bold mb-1">Commission Paid</div>
                                   <div className="text-2xl font-black text-success">${Number(s.total_commission).toLocaleString(undefined, {minimumFractionDigits:2})}</div>
                                </div>
+                            </div>
+                            <div className="ml-6 flex items-center border-l border-white/10 pl-6">
+                               <button onClick={() => viewDispatcherPaystub(s)} className="p-2 bg-primary/10 hover:bg-primary/20 rounded-lg transition text-primary font-bold flex items-center" title="View Paystub">
+                                  <Printer className="w-5 h-5" />
+                               </button>
                             </div>
                          </div>
                       </div>
@@ -840,6 +869,165 @@ export default function PayrollPage() {
                 </div>
              </div>
           </div>
+       )}
+
+       {/* Driver Settlement Modal */}
+       {driverSettlementModal && (
+          <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] flex items-center justify-center p-4">
+             <div className="bg-[#111] border border-white/10 rounded-3xl p-6 w-full max-w-2xl shadow-2xl animate-in fade-in zoom-in-95 flex flex-col max-h-[90vh]">
+                <div className="flex justify-between items-center mb-6 border-b border-white/10 pb-4">
+                   <div>
+                      <h2 className="text-xl font-bold">Select Loads for Driver Settlement</h2>
+                      <p className="text-sm text-gray-500">{driverSettlementModal.first_name} {driverSettlementModal.last_name}</p>
+                   </div>
+                   <button onClick={() => setDriverSettlementModal(null)} className="text-gray-400 hover:text-white"><X className="w-5 h-5"/></button>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto mb-6 pr-2 space-y-2 hide-scrollbar">
+                   {driverSettlementModal.loadFinancials.map((lf: any) => {
+                      const isSelected = selectedDriverLfIds.includes(lf.id);
+                      const pay = Number(lf.driver_pay) || 0;
+                      
+                      return (
+                         <div 
+                           key={lf.id} 
+                           onClick={() => {
+                              if (isSelected) {
+                                 setSelectedDriverLfIds(prev => prev.filter(id => id !== lf.id));
+                              } else {
+                                 setSelectedDriverLfIds(prev => [...prev, lf.id]);
+                              }
+                           }}
+                           className={`p-4 rounded-xl border cursor-pointer transition flex justify-between items-center ${isSelected ? 'bg-success/10 border-success/30' : 'bg-white/5 border-white/5 hover:bg-white/10'}`}
+                         >
+                            <div className="flex items-center">
+                               <div className={`w-5 h-5 rounded border flex items-center justify-center mr-4 ${isSelected ? 'bg-success border-success text-white' : 'border-gray-500'}`}>
+                                  {isSelected && <CheckCircle className="w-3 h-3" />}
+                               </div>
+                               <div>
+                                  <div className="font-bold text-sm">Load #{lf.loads?.load_number}</div>
+                                  <div className="text-xs text-gray-400">{lf.loads?.origin_city}, {lf.loads?.origin_state} &rarr; {lf.loads?.destination_city}, {lf.loads?.destination_state}</div>
+                               </div>
+                            </div>
+                            <div className="text-right">
+                               <div className="text-sm font-bold text-success">${pay.toFixed(2)}</div>
+                            </div>
+                         </div>
+                      );
+                   })}
+                </div>
+                
+                <div className="border-t border-white/10 pt-4 mt-auto">
+                   <div className="flex justify-between items-end mb-4">
+                      <div>
+                         <div className="text-xs text-gray-500 font-bold uppercase mb-1">Selected Loads</div>
+                         <div className="text-xl font-bold">{selectedDriverLfIds.length} of {driverSettlementModal.loadFinancials.length}</div>
+                      </div>
+                      <div className="text-right">
+                         <div className="text-xs text-gray-500 font-bold uppercase mb-1">Total Gross Pay (Before Deductions)</div>
+                         <div className="text-3xl font-black text-success">
+                            ${driverSettlementModal.loadFinancials
+                                .filter((lf:any) => selectedDriverLfIds.includes(lf.id))
+                                .reduce((sum:number, lf:any) => sum + (Number(lf.driver_pay) || 0), 0)
+                                .toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                         </div>
+                      </div>
+                   </div>
+                   <button 
+                      onClick={handleConfirmDriverSettlement}
+                      disabled={selectedDriverLfIds.length === 0}
+                      className="w-full py-4 bg-success text-white font-bold rounded-xl hover:bg-green-600 transition shadow-[0_0_20px_rgba(34,197,94,0.3)] disabled:opacity-50 disabled:cursor-not-allowed"
+                   >
+                      Confirm & Generate Settlement
+                   </button>
+                </div>
+             </div>
+          </div>
+       )}
+
+       {/* Dispatcher Paystub Modal / Print View */}
+       {viewingDispatcherPaystub && (
+         <div className="fixed inset-0 bg-black/90 z-[200] flex justify-center overflow-y-auto p-4 print:p-0 print:bg-white print:text-black">
+            <div className="bg-white text-black w-full max-w-3xl min-h-screen relative shadow-2xl p-10 print:p-0 print:shadow-none mx-auto">
+               <button onClick={() => setViewingDispatcherPaystub(null)} className="absolute top-4 right-4 text-gray-400 hover:text-black print:hidden"><X className="w-6 h-6"/></button>
+               <button onClick={() => window.print()} className="absolute top-4 right-16 bg-blue-600 text-white px-4 py-2 rounded-lg font-bold flex items-center print:hidden hover:bg-blue-700">
+                  <Printer className="w-4 h-4 mr-2"/> Print PDF
+               </button>
+
+               <div className="flex justify-between items-end border-b-2 border-gray-200 pb-6 mb-6">
+                  <div>
+                     <h1 className="text-4xl font-black text-gray-900 tracking-tighter uppercase">Northstar</h1>
+                     <p className="text-sm text-gray-500 font-bold uppercase tracking-widest">Freight Logistics</p>
+                  </div>
+                  <div className="text-right">
+                     <h2 className="text-2xl font-light text-gray-400 uppercase tracking-widest">Commission Paystub</h2>
+                     <p className="text-sm font-bold text-gray-800 mt-1">ID: #{viewingDispatcherPaystub.id.substring(0,8).toUpperCase()}</p>
+                  </div>
+               </div>
+
+               <div className="grid grid-cols-2 gap-12 mb-10">
+                  <div>
+                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-200 pb-2 mb-3">Dispatcher Information</h3>
+                     <p className="font-bold text-lg text-gray-900">{viewingDispatcherPaystub.users?.first_name} {viewingDispatcherPaystub.users?.last_name}</p>
+                     <p className="text-gray-500 text-xs mt-2 uppercase">Independent Dispatcher / Contractor</p>
+                  </div>
+                  <div>
+                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-200 pb-2 mb-3">Period Information</h3>
+                     <table className="w-full text-sm">
+                        <tbody>
+                           <tr><td className="py-1 text-gray-500">Period Start:</td><td className="py-1 font-bold text-right">{new Date(viewingDispatcherPaystub.period_start).toLocaleDateString()}</td></tr>
+                           <tr><td className="py-1 text-gray-500">Period End:</td><td className="py-1 font-bold text-right">{new Date(viewingDispatcherPaystub.period_end).toLocaleDateString()}</td></tr>
+                           <tr><td className="py-1 text-gray-500">Pay Date:</td><td className="py-1 font-bold text-right">{new Date(viewingDispatcherPaystub.paid_at).toLocaleDateString()}</td></tr>
+                        </tbody>
+                     </table>
+                  </div>
+               </div>
+
+               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-200 pb-2 mb-3">Managed Loads</h3>
+               <table className="w-full text-sm mb-10">
+                  <thead>
+                     <tr className="bg-gray-50 text-gray-500">
+                        <th className="py-2 px-3 text-left font-bold">Load #</th>
+                        <th className="py-2 px-3 text-left font-bold">Delivery Date</th>
+                        <th className="py-2 px-3 text-left font-bold">Origin &rarr; Destination</th>
+                        <th className="py-2 px-3 text-right font-bold">Gross Rate</th>
+                     </tr>
+                  </thead>
+                  <tbody>
+                     {dispatcherPaystubLoads.map(load => (
+                        <tr key={load.id} className="border-b border-gray-100">
+                           <td className="py-3 px-3 font-mono">{load.load_number}</td>
+                           <td className="py-3 px-3">{load.delivery_date ? new Date(load.delivery_date).toLocaleDateString() : 'N/A'}</td>
+                           <td className="py-3 px-3">{load.origin_city}, {load.origin_state} &rarr; {load.destination_city}, {load.destination_state}</td>
+                           <td className="py-3 px-3 text-right font-bold">${Number(load.rate).toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                        </tr>
+                     ))}
+                  </tbody>
+               </table>
+
+               <div className="grid grid-cols-2 gap-12">
+                  <div></div>
+                  <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
+                     <table className="w-full text-sm">
+                        <tbody>
+                           <tr>
+                              <td className="py-2 text-gray-600 font-bold uppercase">Total Gross Managed</td>
+                              <td className="py-2 text-right font-bold">${Number(viewingDispatcherPaystub.total_gross_revenue).toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                           </tr>
+                           <tr>
+                              <td className="py-4 text-gray-900 font-black uppercase text-xl">Total Commission</td>
+                              <td className="py-4 text-right text-green-600 font-black text-xl">${Number(viewingDispatcherPaystub.total_commission).toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                           </tr>
+                        </tbody>
+                     </table>
+                  </div>
+               </div>
+
+               <div className="mt-16 text-center text-xs text-gray-400 pt-8 border-t border-gray-200">
+                  Generated by Northstar Fleet OS
+               </div>
+            </div>
+         </div>
        )}
 
        {showDeductionModal && (
