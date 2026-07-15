@@ -65,8 +65,8 @@ export default function PayrollPage() {
       const dest = destStop.location || destStop.address || 'Unknown Destination';
       return <>{origin} &rarr; {dest}</>;
     }
-    const origin = [load?.origin_city, load?.origin_state].filter(Boolean).join(', ') || 'Unknown Origin';
-    const dest = [load?.destination_city, load?.destination_state].filter(Boolean).join(', ') || 'Unknown Destination';
+    const origin = load?.pickup_location || load?.pickup_address || 'Unknown Origin';
+    const dest = load?.delivery_location || load?.delivery_address || 'Unknown Destination';
     if (origin === 'Unknown Origin' && dest === 'Unknown Destination') return <>N/A</>;
     return <>{origin} &rarr; {dest}</>;
   };
