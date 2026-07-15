@@ -38,6 +38,10 @@ export default function PayrollPage() {
   const [viewingPaystub, setViewingPaystub] = useState<any | null>(null);
   const [paystubLoads, setPaystubLoads] = useState<any[]>([]);
 
+  // Dispatcher Settlement Selection UI
+  const [dispatcherSettlementModal, setDispatcherSettlementModal] = useState<any | null>(null);
+  const [selectedDispatcherLoadIds, setSelectedDispatcherLoadIds] = useState<string[]>([]);
+
   // Deductions Form
   const [showDeductionModal, setShowDeductionModal] = useState(false);
   const [deductionDriver, setDeductionDriver] = useState('');
@@ -158,33 +162,47 @@ export default function PayrollPage() {
     }
   };
 
-  const handleSettleDispatcher = async (stat: any) => {
-    if (stat.unpaidLoads.length === 0) return;
-    if (!confirm(`Generate settlement for ${stat.unpaidLoads.length} loads ($${stat.totalCommission.toFixed(2)})?`)) return;
+  const handleOpenDispatcherModal = (stat: any) => {
+     if (stat.unpaidLoads.length === 0) return;
+     setDispatcherSettlementModal(stat);
+     setSelectedDispatcherLoadIds(stat.unpaidLoads.map((l: any) => l.id));
+  };
+
+  const handleConfirmDispatcherSettlement = async () => {
+    if (!dispatcherSettlementModal || selectedDispatcherLoadIds.length === 0) return;
     
+    const selectedLoads = dispatcherSettlementModal.unpaidLoads.filter((l: any) => selectedDispatcherLoadIds.includes(l.id));
+    
+    const totalGross = selectedLoads.reduce((sum: number, l: any) => sum + (Number(l.rate) || 0), 0);
+    const totalCommission = selectedLoads.reduce((sum: number, l: any) => {
+      const rate = Number(l.rate) || 0;
+      const fee = l.dispatcher?.commission_rate != null ? Number(l.dispatcher.commission_rate) : 5;
+      return sum + (rate * (fee / 100));
+    }, 0);
+
     const now = new Date();
     const periodEnd = now.toISOString().split('T')[0];
     const periodStart = new Date(now.setDate(now.getDate() - 7)).toISOString().split('T')[0];
 
     const { data, error } = await supabase.from('dispatcher_settlements').insert([{
-      dispatcher_id: stat.id,
+      dispatcher_id: dispatcherSettlementModal.id,
       period_start: periodStart,
       period_end: periodEnd,
-      total_loads: stat.unpaidLoads.length,
-      total_gross_revenue: stat.totalGross,
-      total_commission: stat.totalCommission,
+      total_loads: selectedLoads.length,
+      total_gross_revenue: totalGross,
+      total_commission: totalCommission,
       status: 'paid',
       paid_at: new Date().toISOString()
     }]).select('*');
 
     if (!error && data) {
       const settlementId = data[0].id;
-      const unpaidLoadsIds = stat.unpaidLoads.map((l:any) => l.id);
       await supabase
         .from('loads')
         .update({ dispatcher_paid: true, dispatcher_payment_date: new Date().toISOString(), dispatcher_settlement_id: settlementId })
-        .in('id', unpaidLoadsIds);
+        .in('id', selectedDispatcherLoadIds);
 
+      setDispatcherSettlementModal(null);
       fetchData();
     } else {
       alert("Error generating dispatcher settlement: " + error?.message);
@@ -566,7 +584,7 @@ export default function PayrollPage() {
                          </div>
                       </div>
                       <button 
-                         onClick={() => handleSettleDispatcher(stat)}
+                         onClick={() => handleOpenDispatcherModal(stat)}
                          className="w-full py-2 bg-success/20 hover:bg-success text-success hover:text-white font-bold rounded-lg transition text-sm flex items-center justify-center"
                       >
                          <CheckCircle className="w-4 h-4 mr-2" />
@@ -745,6 +763,83 @@ export default function PayrollPage() {
                </div>
             </div>
          </div>
+       )}
+
+       {/* Dispatcher Settlement Modal */}
+       {dispatcherSettlementModal && (
+          <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] flex items-center justify-center p-4">
+             <div className="bg-[#111] border border-white/10 rounded-3xl p-6 w-full max-w-2xl shadow-2xl animate-in fade-in zoom-in-95 flex flex-col max-h-[90vh]">
+                <div className="flex justify-between items-center mb-6 border-b border-white/10 pb-4">
+                   <div>
+                      <h2 className="text-xl font-bold">Select Loads for Settlement</h2>
+                      <p className="text-sm text-gray-500">{dispatcherSettlementModal.first_name} {dispatcherSettlementModal.last_name}</p>
+                   </div>
+                   <button onClick={() => setDispatcherSettlementModal(null)} className="text-gray-400 hover:text-white"><X className="w-5 h-5"/></button>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto mb-6 pr-2 space-y-2 hide-scrollbar">
+                   {dispatcherSettlementModal.unpaidLoads.map((load: any) => {
+                      const isSelected = selectedDispatcherLoadIds.includes(load.id);
+                      const rate = Number(load.rate) || 0;
+                      const feeRate = load.dispatcher?.commission_rate != null ? Number(load.dispatcher.commission_rate) : 5;
+                      const commission = rate * (feeRate / 100);
+                      
+                      return (
+                         <div 
+                           key={load.id} 
+                           onClick={() => {
+                              if (isSelected) {
+                                 setSelectedDispatcherLoadIds(prev => prev.filter(id => id !== load.id));
+                              } else {
+                                 setSelectedDispatcherLoadIds(prev => [...prev, load.id]);
+                              }
+                           }}
+                           className={`p-4 rounded-xl border cursor-pointer transition flex justify-between items-center ${isSelected ? 'bg-success/10 border-success/30' : 'bg-white/5 border-white/5 hover:bg-white/10'}`}
+                         >
+                            <div className="flex items-center">
+                               <div className={`w-5 h-5 rounded border flex items-center justify-center mr-4 ${isSelected ? 'bg-success border-success text-white' : 'border-gray-500'}`}>
+                                  {isSelected && <CheckCircle className="w-3 h-3" />}
+                               </div>
+                               <div>
+                                  <div className="font-bold text-sm">Load #{load.load_number}</div>
+                                  <div className="text-xs text-gray-400">{load.origin_city}, {load.origin_state} &rarr; {load.destination_city}, {load.destination_state}</div>
+                               </div>
+                            </div>
+                            <div className="text-right">
+                               <div className="text-sm font-bold text-success">${commission.toFixed(2)}</div>
+                               <div className="text-xs text-gray-500">Gross: ${rate.toFixed(2)}</div>
+                            </div>
+                         </div>
+                      );
+                   })}
+                </div>
+                
+                <div className="border-t border-white/10 pt-4 mt-auto">
+                   <div className="flex justify-between items-end mb-4">
+                      <div>
+                         <div className="text-xs text-gray-500 font-bold uppercase mb-1">Selected Loads</div>
+                         <div className="text-xl font-bold">{selectedDispatcherLoadIds.length} of {dispatcherSettlementModal.unpaidLoads.length}</div>
+                      </div>
+                      <div className="text-right">
+                         <div className="text-xs text-gray-500 font-bold uppercase mb-1">Total Commission to Pay</div>
+                         <div className="text-3xl font-black text-success">
+                            ${dispatcherSettlementModal.unpaidLoads
+                                .filter((l:any) => selectedDispatcherLoadIds.includes(l.id))
+                                .reduce((sum:number, l:any) => sum + ((Number(l.rate) || 0) * ((l.dispatcher?.commission_rate != null ? Number(l.dispatcher.commission_rate) : 5) / 100)), 0)
+                                .toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                         </div>
+                      </div>
+                   </div>
+                   <button 
+                      onClick={handleConfirmDispatcherSettlement}
+                      disabled={selectedDispatcherLoadIds.length === 0}
+                      className="w-full py-4 bg-success text-white font-bold rounded-xl hover:bg-green-600 transition shadow-[0_0_20px_rgba(34,197,94,0.3)] disabled:opacity-50 disabled:cursor-not-allowed"
+                   >
+                      Confirm & Generate Settlement
+                   </button>
+                </div>
+             </div>
+          </div>
        )}
 
        {showDeductionModal && (
