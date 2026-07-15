@@ -57,6 +57,20 @@ export default function PayrollPage() {
   const [deductionAmount, setDeductionAmount] = useState('');
   const [deductionType, setDeductionType] = useState('one-time');
 
+  const renderRouting = (load: any) => {
+    if (load?.stops && load.stops.length > 0) {
+      const originStop = load.stops.find((s:any) => s.type === 'pickup') || load.stops[0];
+      const destStop = [...load.stops].reverse().find((s:any) => s.type === 'delivery') || load.stops[load.stops.length - 1];
+      const origin = originStop.location || originStop.address || 'Unknown Origin';
+      const dest = destStop.location || destStop.address || 'Unknown Destination';
+      return <>{origin} &rarr; {dest}</>;
+    }
+    const origin = [load?.origin_city, load?.origin_state].filter(Boolean).join(', ') || 'Unknown Origin';
+    const dest = [load?.destination_city, load?.destination_state].filter(Boolean).join(', ') || 'Unknown Destination';
+    if (origin === 'Unknown Origin' && dest === 'Unknown Destination') return <>N/A</>;
+    return <>{origin} &rarr; {dest}</>;
+  };
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -743,7 +757,7 @@ export default function PayrollPage() {
                         <tr key={lf.id} className="border-b border-gray-100">
                            <td className="py-3 px-3 font-mono">{lf.loads?.load_number}</td>
                            <td className="py-3 px-3">{new Date(lf.loads?.delivery_date).toLocaleDateString()}</td>
-                           <td className="py-3 px-3">{lf.loads?.origin_city}, {lf.loads?.origin_state} &rarr; {lf.loads?.destination_city}, {lf.loads?.destination_state}</td>
+                           <td className="py-3 px-3">{renderRouting(lf.loads)}</td>
                            <td className="py-3 px-3 text-right font-bold">${Number(lf.driver_pay).toLocaleString(undefined, {minimumFractionDigits:2})}</td>
                         </tr>
                      ))}
@@ -831,7 +845,7 @@ export default function PayrollPage() {
                                </div>
                                <div>
                                   <div className="font-bold text-sm">Load #{load.load_number}</div>
-                                  <div className="text-xs text-gray-400">{load.origin_city}, {load.origin_state} &rarr; {load.destination_city}, {load.destination_state}</div>
+                                  <div className="text-xs text-gray-400">{renderRouting(load)}</div>
                                </div>
                             </div>
                             <div className="text-right">
@@ -906,7 +920,7 @@ export default function PayrollPage() {
                                </div>
                                <div>
                                   <div className="font-bold text-sm">Load #{lf.loads?.load_number}</div>
-                                  <div className="text-xs text-gray-400">{lf.loads?.origin_city}, {lf.loads?.origin_state} &rarr; {lf.loads?.destination_city}, {lf.loads?.destination_state}</div>
+                                  <div className="text-xs text-gray-400">{renderRouting(lf.loads)}</div>
                                </div>
                             </div>
                             <div className="text-right">
@@ -998,7 +1012,7 @@ export default function PayrollPage() {
                         <tr key={load.id} className="border-b border-gray-100">
                            <td className="py-3 px-3 font-mono">{load.load_number}</td>
                            <td className="py-3 px-3">{load.delivery_date ? new Date(load.delivery_date).toLocaleDateString() : 'N/A'}</td>
-                           <td className="py-3 px-3">{load.origin_city}, {load.origin_state} &rarr; {load.destination_city}, {load.destination_state}</td>
+                           <td className="py-3 px-3">{renderRouting(load)}</td>
                            <td className="py-3 px-3 text-right font-bold">${Number(load.rate).toLocaleString(undefined, {minimumFractionDigits:2})}</td>
                         </tr>
                      ))}
