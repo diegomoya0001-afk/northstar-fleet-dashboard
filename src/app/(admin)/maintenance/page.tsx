@@ -377,7 +377,7 @@ export default function ShopVisitsPage() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-white/10 text-gray-400 text-sm">
-                    <th className="pb-4 font-medium pl-4">Visit ID</th>
+                    <th className="pb-4 font-medium pl-4">Work Performed</th>
                     <th className="pb-4 font-medium">Dates (In/Out)</th>
                     <th className="pb-4 font-medium">Truck & Shop</th>
                     <th className="pb-4 font-medium">Total Cost</th>
@@ -391,7 +391,7 @@ export default function ShopVisitsPage() {
                       onClick={() => setSelectedVisit(visit)}
                       className={`border-b border-white/5 hover:bg-white/10 transition-colors cursor-pointer ${selectedVisit?.id === visit.id ? 'bg-white/10' : ''}`}
                     >
-                      <td className="py-4 pl-4 font-bold text-xs font-mono">{visit.id.split('-')[0]}...</td>
+                      <td className="py-4 pl-4"><div className="font-medium text-sm text-white truncate max-w-[250px]" title={visit.work_performed}>{visit.work_performed || 'N/A'}</div></td>
                       <td className="py-4 text-gray-300">
                         <div>IN: {visit.date_in}</div>
                         <div className="text-xs text-gray-500">OUT: {visit.date_out || 'Pending'}</div>
