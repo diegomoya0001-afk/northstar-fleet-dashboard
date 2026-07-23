@@ -270,6 +270,26 @@ export default function FinancialsPage() {
     setCostToDelete(null);
   }
 
+  async function handleDeletePayment(paymentId: string) {
+    if (!confirm("Are you sure you want to delete this payment record? You will need to log it again.")) return;
+    
+    const { data: payment } = await supabase.from('fixed_cost_payments').select('receipt_url').eq('id', paymentId).single();
+    
+    if (payment?.receipt_url) {
+      const fileName = payment.receipt_url.split('/').pop();
+      if (fileName) {
+         await supabase.storage.from('documents').remove([`fixed_costs/${fileName}`]);
+      }
+    }
+    
+    const { error } = await supabase.from('fixed_cost_payments').delete().eq('id', paymentId);
+    if (!error) {
+      fetchFinancialData();
+    } else {
+      alert("Error deleting payment: " + error.message);
+    }
+  }
+
   // --- CHARTS ---
   const chartDataMap = new Map();
   loadsWithProfitability.forEach(load => {
@@ -563,7 +583,10 @@ export default function FinancialsPage() {
                         {isPaid ? (
                            <>
                              <div className="text-xs text-gray-400">Paid: <span className="text-white font-bold">${Number(payment.amount_paid).toLocaleString()}</span> on {new Date(payment.payment_date).toLocaleDateString()}</div>
-                             {payment.receipt_url && <a href={payment.receipt_url} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline bg-primary/10 px-3 py-1.5 rounded-lg font-bold">View Receipt</a>}
+                             <div className="flex gap-3 items-center">
+                               {payment.receipt_url && <a href={payment.receipt_url} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline bg-primary/10 px-3 py-1.5 rounded-lg font-bold">View Receipt</a>}
+                               <button onClick={() => handleDeletePayment(payment.id)} className="text-gray-500 hover:text-red-500 transition" title="Delete Payment Record"><Trash2 className="w-4 h-4" /></button>
+                             </div>
                            </>
                         ) : (
                            <>
