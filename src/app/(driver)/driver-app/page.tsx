@@ -4,6 +4,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { MapPin, Truck, CheckCircle, Package, LogOut, Upload, FileText, Camera, Navigation, Clock, X, Map, ShieldCheck, Wrench, Wallet, ChevronRight } from 'lucide-react';
+import ImageCropper from '@/components/ImageCropper';
 
 const HOS_STATUSES = [
   { id: 'off_duty', label: 'Off Duty', color: 'bg-gray-500' },
@@ -79,6 +80,7 @@ export default function DriverApp() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [cropModalData, setCropModalData] = useState<{file: File, load: any, stopIndex?: number} | null>(null);
 
   // HOS States
   const [dutyStatus, setDutyStatus] = useState(HOS_STATUSES[0]); // Default: Off Duty
@@ -226,26 +228,28 @@ export default function DriverApp() {
     }
   };
 
-  const handleUploadDocument = async (e: React.ChangeEvent<HTMLInputElement>, load: any, stopIndex?: number) => {
-    const file = e.target.files?.[0];
-    if (!file || !load) return;
-
+  const processAndUploadFile = async (file: File | Blob, load: any, stopIndex?: number, originalName?: string) => {
     setUploading(true);
+    setCropModalData(null);
     
     try {
-      // Compress the file / avoid iOS upload bugs
-      const base64DataUrl = await compressImage(file);
-      
-      // Convert base64 back to a File
-      const arr = base64DataUrl.split(',');
-      const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
-      const bstr = atob(arr[1]);
-      let n = bstr.length;
-      const u8arr = new Uint8Array(n);
-      while(n--){
-          u8arr[n] = bstr.charCodeAt(n);
+      let finalFile: File;
+      if (file instanceof File && file.type.startsWith('image/')) {
+         const base64DataUrl = await compressImage(file);
+         const arr = base64DataUrl.split(',');
+         const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+         const bstr = atob(arr[1]);
+         let n = bstr.length;
+         const u8arr = new Uint8Array(n);
+         while(n--){
+             u8arr[n] = bstr.charCodeAt(n);
+         }
+         finalFile = new File([u8arr], file.name, {type: mime});
+      } else if (file instanceof Blob && !(file instanceof File)) {
+         finalFile = new File([file], originalName || 'cropped.jpg', {type: file.type});
+      } else {
+         finalFile = file as File;
       }
-      const finalFile = new File([u8arr], file.name, {type: mime});
 
       const fileExt = finalFile.name.split('.').pop() || 'jpg';
       const fileName = `load-${load.id}-${Date.now()}.${fileExt}`;
@@ -256,7 +260,6 @@ export default function DriverApp() {
 
       const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(filePath);
 
-      // Save as POD (Proof of Delivery)
       const { error: dbError } = await supabase.from('documents').insert([{
         entity_type: 'load',
         entity_id: load.id,
@@ -268,7 +271,6 @@ export default function DriverApp() {
       if (dbError) throw dbError;
 
       alert("POD successfully uploaded!");
-      // If the load is at_delivery, we can automatically mark it as delivered.
       if (stopIndex !== undefined && load.stops) {
          await handleStopUpdate(load.id, load.stops, stopIndex, 'completed');
       } else if (load.status === 'at_delivery') {
@@ -284,6 +286,21 @@ export default function DriverApp() {
     } finally {
       setUploading(false);
     }
+  };
+
+  const handleUploadDocument = async (e: React.ChangeEvent<HTMLInputElement>, load: any, stopIndex?: number) => {
+    const target = e.target;
+    const file = target.files?.[0];
+    if (!file || !load) return;
+
+    if (file.type.startsWith('image/')) {
+       setCropModalData({ file, load, stopIndex });
+       target.value = '';
+       return;
+    }
+    
+    await processAndUploadFile(file, load, stopIndex);
+    target.value = '';
   };
 
   const handleOpenNav = (address: string) => {
@@ -736,6 +753,16 @@ export default function DriverApp() {
             </div>
           </div>
         </div>
+      )}
+
+      {cropModalData && (
+        <ImageCropper
+          imageFile={cropModalData.file}
+          onCancel={() => setCropModalData(null)}
+          onCropComplete={(croppedBlob, originalName) => {
+            processAndUploadFile(croppedBlob, cropModalData.load, cropModalData.stopIndex, originalName);
+          }}
+        />
       )}
     </div>
   );

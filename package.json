@@ -16,6 +16,7 @@
     "next": "^16.2.9",
     "react": "19.0.0",
     "react-dom": "19.0.0",
+    "react-image-crop": "^11.1.2",
     "recharts": "^3.8.1",
     "resend": "^6.12.4",
     "twilio": "^6.0.2",
