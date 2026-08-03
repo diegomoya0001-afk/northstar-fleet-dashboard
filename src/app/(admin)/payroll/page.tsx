@@ -168,7 +168,7 @@ export default function PayrollPage() {
       deductions: totalDeds,
       net_payout: netPayout,
       status: 'pending'
-    }]).select('*, users(first_name, last_name, address, phone)');
+    }]).select('*, users(first_name, last_name, phone)');
 
     if (error) {
       alert("Error generating settlement: " + error.message);
@@ -725,8 +725,7 @@ export default function PayrollPage() {
                <div className="grid grid-cols-2 gap-12 mb-10">
                   <div>
                      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-200 pb-2 mb-3">Driver Information</h3>
-                     <p className="font-bold text-lg text-gray-900">{viewingPaystub.users?.first_name} {viewingPaystub.users?.last_name}</p>
-                     <p className="text-gray-600 text-sm mt-1">{viewingPaystub.users?.address || 'Address not on file'}</p>
+                     <p className="font-bold text-gray-800">{viewingPaystub.users?.first_name} {viewingPaystub.users?.last_name}</p>
                      <p className="text-gray-600 text-sm">{viewingPaystub.users?.phone || 'Phone not on file'}</p>
                      <p className="text-gray-500 text-xs mt-2 uppercase">W2 Employee</p>
                   </div>
