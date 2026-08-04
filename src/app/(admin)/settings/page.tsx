@@ -21,6 +21,7 @@ export default function SettingsPage() {
 
   const [dispatchers, setDispatchers] = useState<any[]>([]);
   const [dispatcherToDelete, setDispatcherToDelete] = useState<string | null>(null);
+  const [editingDispatcherId, setEditingDispatcherId] = useState<string | null>(null);
   const [newDispatcherFirstName, setNewDispatcherFirstName] = useState('');
   const [newDispatcherLastName, setNewDispatcherLastName] = useState('');
   const [newDispatcherCommission, setNewDispatcherCommission] = useState('5');
@@ -143,6 +144,31 @@ export default function SettingsPage() {
       fetchDispatchers();
     } else {
       alert("Error adding dispatcher: " + error.message);
+    }
+  }
+
+  async function handleUpdateDispatcher() {
+    if (!editingDispatcherId || !newDispatcherFirstName || !newDispatcherLastName) return;
+    const { error } = await supabase.from('users').update({
+      first_name: newDispatcherFirstName,
+      last_name: newDispatcherLastName,
+      commission_rate: parseFloat(newDispatcherCommission) || 5,
+      company_name: newDispatcherCompany,
+      payment_info: newDispatcherPaymentInfo,
+      dispatcher_id_number: newDispatcherIdNumber
+    }).eq('id', editingDispatcherId);
+
+    if (!error) {
+      setNewDispatcherFirstName('');
+      setNewDispatcherLastName('');
+      setNewDispatcherCommission('5');
+      setNewDispatcherCompany('');
+      setNewDispatcherPaymentInfo('');
+      setNewDispatcherIdNumber('');
+      setEditingDispatcherId(null);
+      fetchDispatchers();
+    } else {
+      alert("Error updating dispatcher: " + error.message);
     }
   }
 
@@ -665,12 +691,30 @@ export default function SettingsPage() {
                     placeholder="5"
                   />
                 </div>
-                <button 
-                  onClick={handleAddDispatcher}
-                  className="px-6 py-3 bg-success text-white font-bold rounded-xl hover:bg-green-600 transition h-[50px]"
-                >
-                  Add
-                </button>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={editingDispatcherId ? handleUpdateDispatcher : handleAddDispatcher}
+                    className="px-6 py-3 bg-success text-white font-bold rounded-xl hover:bg-green-600 transition h-[50px] flex-1 min-w-[100px]"
+                  >
+                    {editingDispatcherId ? 'Save' : 'Add'}
+                  </button>
+                  {editingDispatcherId && (
+                    <button 
+                      onClick={() => {
+                        setEditingDispatcherId(null);
+                        setNewDispatcherFirstName('');
+                        setNewDispatcherLastName('');
+                        setNewDispatcherCommission('5');
+                        setNewDispatcherCompany('');
+                        setNewDispatcherPaymentInfo('');
+                        setNewDispatcherIdNumber('');
+                      }}
+                      className="px-6 py-3 bg-white/10 text-white font-bold rounded-xl hover:bg-white/20 transition h-[50px]"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -691,10 +735,25 @@ export default function SettingsPage() {
                        <div className="font-bold text-success">{d.commission_rate}% Commission</div>
                        <div className="text-xs text-gray-500 mt-1">Pay: {d.payment_info || 'Not provided'}</div>
                     </div>
-                    <div className="flex justify-end">
+                    <div className="flex justify-end gap-2">
+                      <button 
+                        onClick={() => {
+                          setEditingDispatcherId(d.id);
+                          setNewDispatcherFirstName(d.first_name);
+                          setNewDispatcherLastName(d.last_name);
+                          setNewDispatcherIdNumber(d.dispatcher_id_number || '');
+                          setNewDispatcherCompany(d.company_name || '');
+                          setNewDispatcherPaymentInfo(d.payment_info || '');
+                          setNewDispatcherCommission(d.commission_rate?.toString() || '5');
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        className="text-primary hover:text-blue-400 px-4 py-2 bg-primary/10 rounded-lg transition font-bold"
+                      >
+                        Edit
+                      </button>
                       <button 
                         onClick={() => handleDeleteDispatcher(d.id)}
-                        className="text-danger hover:text-red-400 px-4 py-2 bg-danger/10 rounded-lg transition"
+                        className="text-danger hover:text-red-400 px-4 py-2 bg-danger/10 rounded-lg transition font-bold"
                       >
                         Delete
                       </button>
@@ -712,9 +771,9 @@ export default function SettingsPage() {
 
       <PinModal 
         isOpen={showPinModal} 
-        onClose={() => { setShowPinModal(false); setUserToDelete(null); }} 
-        onSuccess={handleConfirmDeleteUser}
-        actionText="delete this user profile"
+        onClose={() => { setShowPinModal(false); setUserToDelete(null); setDispatcherToDelete(null); }} 
+        onSuccess={userToDelete ? handleConfirmDeleteUser : handleConfirmDeleteDispatcher}
+        actionText={userToDelete ? "delete this user profile" : "delete this dispatcher"}
       />
     </div>
   );
