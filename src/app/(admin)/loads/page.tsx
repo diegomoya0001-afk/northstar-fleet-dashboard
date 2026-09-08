@@ -22,6 +22,7 @@ export default function LoadsPage() {
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [assigningDriverId, setAssigningDriverId] = useState('');
+  const [reconciling, setReconciling] = useState(false);
 
   // Form states
   const [formLoadNumber, setFormLoadNumber] = useState('');
@@ -366,7 +367,8 @@ export default function LoadsPage() {
   }
 
   async function handleReconcileFinancials() {
-    if (!selectedLoad) return;
+    if (!selectedLoad || reconciling) return;
+    setReconciling(true);
     
     const dFeePercent = settings?.dispatcher_fee_percent !== undefined ? Number(settings.dispatcher_fee_percent) : 5;
     const fFeePercent = settings?.factoring_fee_percent !== undefined ? Number(settings.factoring_fee_percent) : 2.5;
@@ -397,12 +399,15 @@ export default function LoadsPage() {
 
     if (!error) {
        alert("Financials successfully reconciled and frozen for this load.");
+       setReconciling(false);
+       fetchLoads();
     } else {
        if (error.code === '23505') {
           alert("This load has already been reconciled.");
        } else {
           alert("Error reconciling financials: " + error.message);
        }
+       setReconciling(false);
     }
   }
 
@@ -764,9 +769,10 @@ export default function LoadsPage() {
                            {['delivered', 'invoiced', 'paid'].includes(selectedLoad.status) && (
                              <button 
                                onClick={handleReconcileFinancials}
-                               className="w-full mt-4 bg-success/10 hover:bg-success/20 text-success border border-success/30 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition"
+                               disabled={reconciling}
+                               className="w-full py-3 bg-gradient-to-r from-success to-green-500 hover:from-green-600 hover:to-green-500 text-white font-black rounded-xl shadow-[0_0_20px_rgba(34,197,94,0.3)] transition transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                              >
-                               Reconcile & Lock Financials
+                               {reconciling ? 'Processing...' : 'Reconcile & Lock Financials'}
                              </button>
                            )}
                         </div>

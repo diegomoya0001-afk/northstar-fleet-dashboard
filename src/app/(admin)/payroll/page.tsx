@@ -18,6 +18,7 @@ export default function PayrollPage() {
   const [unsettledLoadFinancials, setUnsettledLoadFinancials] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [generating, setGenerating] = useState(false);
 
   // PIN & Edit States
   const [showPinModal, setShowPinModal] = useState(false);
@@ -137,7 +138,8 @@ export default function PayrollPage() {
   };
 
   const handleConfirmDriverSettlement = async () => {
-    if (!driverSettlementModal || selectedDriverLfIds.length === 0) return;
+    if (!driverSettlementModal || selectedDriverLfIds.length === 0 || generating) return;
+    setGenerating(true);
 
     const selectedLfs = driverSettlementModal.loadFinancials.filter((lf: any) => selectedDriverLfIds.includes(lf.id));
 
@@ -172,6 +174,7 @@ export default function PayrollPage() {
 
     if (error) {
       alert("Error generating settlement: " + error.message);
+      setGenerating(false);
     } else if (data) {
       const settlementId = data[0].id;
       
@@ -190,6 +193,7 @@ export default function PayrollPage() {
       setDriverSettlementModal(null);
       alert("Settlement successfully generated!");
       fetchData();
+      setGenerating(false);
     }
   };
 
@@ -200,7 +204,8 @@ export default function PayrollPage() {
   };
 
   const handleConfirmDispatcherSettlement = async () => {
-    if (!dispatcherSettlementModal || selectedDispatcherLoadIds.length === 0) return;
+    if (!dispatcherSettlementModal || selectedDispatcherLoadIds.length === 0 || generating) return;
+    setGenerating(true);
     
     const selectedLoads = dispatcherSettlementModal.unpaidLoads.filter((l: any) => selectedDispatcherLoadIds.includes(l.id));
     
@@ -874,10 +879,10 @@ export default function PayrollPage() {
                    </div>
                    <button 
                       onClick={handleConfirmDispatcherSettlement}
-                      disabled={selectedDispatcherLoadIds.length === 0}
+                      disabled={selectedDispatcherLoadIds.length === 0 || generating}
                       className="w-full py-4 bg-success text-white font-bold rounded-xl hover:bg-green-600 transition shadow-[0_0_20px_rgba(34,197,94,0.3)] disabled:opacity-50 disabled:cursor-not-allowed"
                    >
-                      Confirm & Generate Settlement
+                      {generating ? 'Processing...' : 'Confirm & Generate Settlement'}
                    </button>
                 </div>
              </div>
@@ -948,10 +953,10 @@ export default function PayrollPage() {
                    </div>
                    <button 
                       onClick={handleConfirmDriverSettlement}
-                      disabled={selectedDriverLfIds.length === 0}
+                      disabled={selectedDriverLfIds.length === 0 || generating}
                       className="w-full py-4 bg-success text-white font-bold rounded-xl hover:bg-green-600 transition shadow-[0_0_20px_rgba(34,197,94,0.3)] disabled:opacity-50 disabled:cursor-not-allowed"
                    >
-                      Confirm & Generate Settlement
+                      {generating ? 'Generating...' : 'Confirm & Generate Settlement'}
                    </button>
                 </div>
              </div>
