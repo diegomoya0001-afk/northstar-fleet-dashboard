@@ -132,6 +132,9 @@ export default function PayrollPage() {
        alert("No newly reconciled loads found for this driver to generate a settlement.");
        return;
     }
+
+    // Sort: newest at the top, oldest at the bottom
+    lfData.sort((a: any, b: any) => new Date(b.loads?.created_at || 0).getTime() - new Date(a.loads?.created_at || 0).getTime());
     
     setDriverSettlementModal({ ...stat, loadFinancials: lfData });
     setSelectedDriverLfIds(lfData.map((lf: any) => lf.id));
@@ -199,6 +202,8 @@ export default function PayrollPage() {
 
   const handleOpenDispatcherModal = (stat: any) => {
      if (stat.unpaidLoads.length === 0) return;
+     // Sort: newest at the top, oldest at the bottom
+     stat.unpaidLoads.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
      setDispatcherSettlementModal(stat);
      setSelectedDispatcherLoadIds(stat.unpaidLoads.map((l: any) => l.id));
   };
