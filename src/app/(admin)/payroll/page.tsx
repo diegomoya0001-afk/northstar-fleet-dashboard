@@ -853,7 +853,10 @@ export default function PayrollPage() {
                                   {isSelected && <CheckCircle className="w-3 h-3" />}
                                </div>
                                <div>
-                                  <div className="font-bold text-sm">Load #{load.load_number}</div>
+                                  <div className="font-bold text-sm flex items-center gap-2">
+                                     <span>Load #{load.load_number}</span>
+                                     <span className="text-gray-500 font-normal text-xs">{load.delivery_date ? new Date(load.delivery_date).toLocaleDateString() : 'N/A'}</span>
+                                  </div>
                                   <div className="text-xs text-gray-400">{renderRouting(load)}</div>
                                </div>
                             </div>
@@ -928,7 +931,10 @@ export default function PayrollPage() {
                                   {isSelected && <CheckCircle className="w-3 h-3" />}
                                </div>
                                <div>
-                                  <div className="font-bold text-sm">Load #{lf.loads?.load_number}</div>
+                                  <div className="font-bold text-sm flex items-center gap-2">
+                                     <span>Load #{lf.loads?.load_number}</span>
+                                     <span className="text-gray-500 font-normal text-xs">{lf.loads?.delivery_date ? new Date(lf.loads.delivery_date).toLocaleDateString() : 'N/A'}</span>
+                                  </div>
                                   <div className="text-xs text-gray-400">{renderRouting(lf.loads)}</div>
                                </div>
                             </div>
