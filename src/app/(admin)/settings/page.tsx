@@ -97,7 +97,8 @@ export default function SettingsPage() {
 
   async function handleConfirmDeleteUser() {
     if (!userToDelete) return;
-    const { error } = await supabase.from('users').delete().eq('id', userToDelete);
+    // Soft-delete by setting role to 'archived' to preserve history
+    const { error } = await supabase.from('users').update({ role: 'archived' }).eq('id', userToDelete);
     if (!error) {
        fetchUsersList();
     } else {
@@ -179,7 +180,8 @@ export default function SettingsPage() {
 
   async function handleConfirmDeleteDispatcher() {
     if (!dispatcherToDelete) return;
-    const { error } = await supabase.from('users').delete().eq('id', dispatcherToDelete);
+    // Soft-delete by setting role to 'archived' to preserve history
+    const { error } = await supabase.from('users').update({ role: 'archived' }).eq('id', dispatcherToDelete);
     if (!error) {
        fetchDispatchers();
     } else {
