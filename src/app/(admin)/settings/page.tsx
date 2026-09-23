@@ -97,12 +97,15 @@ export default function SettingsPage() {
 
   async function handleConfirmDeleteUser() {
     if (!userToDelete) return;
-    // Soft-delete by setting role to 'archived' to preserve history
-    const { error } = await supabase.from('users').update({ role: 'archived' }).eq('id', userToDelete);
+    const { error } = await supabase.from('users').delete().eq('id', userToDelete);
     if (!error) {
        fetchUsersList();
     } else {
-       alert("Error deleting: " + error.message);
+       if (error.message.includes('foreign key constraint')) {
+         alert("Cannot delete this user because they have assigned loads or payroll history.");
+       } else {
+         alert("Error deleting: " + error.message);
+       }
     }
     setShowPinModal(false);
     setUserToDelete(null);
@@ -180,12 +183,15 @@ export default function SettingsPage() {
 
   async function handleConfirmDeleteDispatcher() {
     if (!dispatcherToDelete) return;
-    // Soft-delete by setting role to 'archived' to preserve history
-    const { error } = await supabase.from('users').update({ role: 'archived' }).eq('id', dispatcherToDelete);
+    const { error } = await supabase.from('users').delete().eq('id', dispatcherToDelete);
     if (!error) {
        fetchDispatchers();
     } else {
-       alert("Error deleting: " + error.message);
+       if (error.message.includes('foreign key constraint')) {
+         alert("Cannot delete this dispatcher because they have assigned loads or payroll history.");
+       } else {
+         alert("Error deleting: " + error.message);
+       }
     }
     setShowPinModal(false);
     setDispatcherToDelete(null);
