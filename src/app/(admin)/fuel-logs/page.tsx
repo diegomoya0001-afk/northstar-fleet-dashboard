@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Droplet, MapPin, Calendar, FileText, Search, Truck, User, TrendingUp, X, Trash2, Edit2, Map } from 'lucide-react';
+import { Droplet, MapPin, Calendar, FileText, Search, Truck, User, TrendingUp, X, Trash2, Edit2, Map, LayoutGrid, List } from 'lucide-react';
 
 const US_STATES = [
   'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA', 
@@ -14,6 +14,7 @@ const US_STATES = [
 
 export default function AdminFuelLogs() {
   const [activeTab, setActiveTab] = useState<'logs' | 'ifta'>('logs');
+  const [iftaViewMode, setIftaViewMode] = useState<'grid' | 'list'>('grid');
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -161,12 +162,25 @@ export default function AdminFuelLogs() {
       return d.getFullYear() === parseInt(iftaYear) && d.getMonth() >= qStartMonth && d.getMonth() <= qEndMonth;
     });
 
-    const byState: Record<string, { gallons: number, cost: number }> = {};
+    const byState: Record<string, { gallons: number, cost: number, distance: number }> = {};
     iftaLogs.forEach(log => {
       const state = log.state || 'Unknown';
-      if (!byState[state]) byState[state] = { gallons: 0, cost: 0 };
+      if (!byState[state]) byState[state] = { gallons: 0, cost: 0, distance: 0 };
       byState[state].gallons += Number(log.gallons || 0);
       byState[state].cost += Number(log.total_cost || 0);
+
+      if (log.fuel_type === 'Diesel' || !log.fuel_type) {
+        const origIndex = logs.findIndex(l => l.id === log.id);
+        const prevLogIndex = logs.findIndex((l, i) => 
+          i > origIndex && 
+          l.vehicle_id === log.vehicle_id && 
+          (l.fuel_type === 'Diesel' || !l.fuel_type)
+        );
+        if (prevLogIndex !== -1) {
+          const distance = log.odometer - logs[prevLogIndex].odometer;
+          if (distance > 0) byState[state].distance += distance;
+        }
+      }
     });
 
     return Object.entries(byState).sort((a,b) => b[1].gallons - a[1].gallons);
@@ -343,30 +357,37 @@ export default function AdminFuelLogs() {
             </table>
           ) : (
             <div className="p-6">
-               <div className="flex items-center space-x-4 mb-6">
-                 <div>
-                    <label className="text-xs text-gray-400 font-bold block mb-1">Filing Year</label>
-                    <select value={iftaYear} onChange={e => setIftaYear(e.target.value)} className="bg-[#111] border border-white/10 rounded-lg p-2 text-white outline-none">
-                       {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
-                    </select>
+               <div className="flex items-center justify-between mb-6">
+                 <div className="flex items-center space-x-4">
+                   <div>
+                      <label className="text-xs text-gray-400 font-bold block mb-1">Filing Year</label>
+                      <select value={iftaYear} onChange={e => setIftaYear(e.target.value)} className="bg-[#111] border border-white/10 rounded-lg p-2 text-white outline-none">
+                         {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+                      </select>
+                   </div>
+                   <div>
+                      <label className="text-xs text-gray-400 font-bold block mb-1">Quarter</label>
+                      <select value={iftaQuarter} onChange={e => setIftaQuarter(e.target.value)} className="bg-[#111] border border-white/10 rounded-lg p-2 text-white outline-none">
+                         <option value="Q1">Q1 (Jan - Mar)</option>
+                         <option value="Q2">Q2 (Apr - Jun)</option>
+                         <option value="Q3">Q3 (Jul - Sep)</option>
+                         <option value="Q4">Q4 (Oct - Dec)</option>
+                      </select>
+                   </div>
                  </div>
-                 <div>
-                    <label className="text-xs text-gray-400 font-bold block mb-1">Quarter</label>
-                    <select value={iftaQuarter} onChange={e => setIftaQuarter(e.target.value)} className="bg-[#111] border border-white/10 rounded-lg p-2 text-white outline-none">
-                       <option value="Q1">Q1 (Jan - Mar)</option>
-                       <option value="Q2">Q2 (Apr - Jun)</option>
-                       <option value="Q3">Q3 (Jul - Sep)</option>
-                       <option value="Q4">Q4 (Oct - Dec)</option>
-                    </select>
+                 
+                 <div className="flex space-x-1 bg-black/40 p-1 rounded-xl border border-white/10">
+                   <button onClick={() => setIftaViewMode('grid')} className={`p-2 rounded-lg transition ${iftaViewMode === 'grid' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-white'}`} title="Grid View"><LayoutGrid className="w-5 h-5"/></button>
+                   <button onClick={() => setIftaViewMode('list')} className={`p-2 rounded-lg transition ${iftaViewMode === 'list' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-white'}`} title="List View"><List className="w-5 h-5"/></button>
                  </div>
                </div>
-
+  
                {iftaData.length === 0 ? (
                   <div className="text-center py-10 text-gray-500 bg-white/5 rounded-2xl border border-white/10">
                      <Map className="w-10 h-10 mx-auto mb-3 opacity-50" />
                      <p>No fuel purchases recorded for {iftaQuarter} {iftaYear}.</p>
                   </div>
-               ) : (
+               ) : iftaViewMode === 'grid' ? (
                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {iftaData.map(([state, data]) => (
                        <div key={state} className="bg-[#111] border border-white/10 rounded-2xl p-6 relative overflow-hidden group">
@@ -374,8 +395,12 @@ export default function AdminFuelLogs() {
                           <div className="text-success font-black text-4xl mb-4">{state}</div>
                           <div className="space-y-2">
                              <div className="flex justify-between items-center text-sm border-b border-white/5 pb-2">
+                                <span className="text-gray-400 font-medium">Miles Driven</span>
+                                <span className="font-bold text-white">{data.distance.toLocaleString()} mi</span>
+                             </div>
+                             <div className="flex justify-between items-center text-sm border-b border-white/5 pb-2">
                                 <span className="text-gray-400 font-medium">Total Gallons</span>
-                                <span className="font-bold text-white">{data.gallons.toFixed(2)}</span>
+                                <span className="font-bold text-white">{data.gallons.toFixed(2)} gal</span>
                              </div>
                              <div className="flex justify-between items-center text-sm">
                                 <span className="text-gray-400 font-medium">Money Spent</span>
@@ -384,6 +409,33 @@ export default function AdminFuelLogs() {
                           </div>
                        </div>
                     ))}
+                 </div>
+               ) : (
+                 <div className="bg-[#111] border border-white/10 rounded-2xl overflow-hidden">
+                   <table className="w-full text-left border-collapse">
+                     <thead className="bg-black/40">
+                       <tr className="text-xs text-gray-400 uppercase tracking-wider border-b border-white/10">
+                         <th className="px-6 py-4 font-semibold">State / Jurisdiction</th>
+                         <th className="px-6 py-4 font-semibold text-right">Miles Driven</th>
+                         <th className="px-6 py-4 font-semibold text-right">Total Gallons</th>
+                         <th className="px-6 py-4 font-semibold text-right">Money Spent</th>
+                         <th className="px-6 py-4 font-semibold text-right">MPG</th>
+                       </tr>
+                     </thead>
+                     <tbody className="divide-y divide-white/5">
+                       {iftaData.map(([state, data]) => (
+                         <tr key={state} className="hover:bg-white/5 transition">
+                           <td className="px-6 py-4 font-bold text-success text-xl">{state}</td>
+                           <td className="px-6 py-4 text-right font-medium">{data.distance.toLocaleString()} mi</td>
+                           <td className="px-6 py-4 text-right font-medium">{data.gallons.toFixed(2)} gal</td>
+                           <td className="px-6 py-4 text-right font-medium text-white">${data.cost.toFixed(2)}</td>
+                           <td className="px-6 py-4 text-right text-gray-400">
+                             {data.gallons > 0 ? (data.distance / data.gallons).toFixed(2) : '-'} mpg
+                           </td>
+                         </tr>
+                       ))}
+                     </tbody>
+                   </table>
                  </div>
                )}
             </div>
